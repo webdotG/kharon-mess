@@ -73,7 +73,6 @@ class ChatViewModel @Inject constructor(
     fun sendMessage() {
         val text = _uiState.value.inputText.trim()
         if (text.isEmpty()) return
-        android.util.Log.d("ChatViewModel", "sendMessage: contactPubKey='$contactPubKey' text='$text'")
         if (contactPubKey.isEmpty()) {
             return
         }

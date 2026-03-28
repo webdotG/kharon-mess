@@ -173,7 +173,6 @@ class KharonSocket @Inject constructor(
             "error" -> {
                 val msg = json.optString("message")
                 // Логируем технически, пользователю не показываем детали
-                android.util.Log.w("KharonSocket", "server error: $msg")
             }
 
             "pong" -> { /* keepalive ok */ }
@@ -189,11 +188,9 @@ class KharonSocket @Inject constructor(
         messageId: String,
     ): Boolean {
         val ws = socket ?: run {
-            android.util.Log.e("KharonSocket", "sendMessage: socket is null")
             return false
         }
         if (_state.value !is ConnectionState.Connected) {
-            android.util.Log.e("KharonSocket", "sendMessage: not connected, state=${_state.value}")
             return false
         }
 
