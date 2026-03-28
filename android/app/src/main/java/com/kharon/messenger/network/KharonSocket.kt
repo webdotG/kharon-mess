@@ -188,8 +188,14 @@ class KharonSocket @Inject constructor(
         mySecretKey: String,
         messageId: String,
     ): Boolean {
-        val ws = socket ?: return false
-        if (_state.value !is ConnectionState.Connected) return false
+        val ws = socket ?: run {
+            android.util.Log.e("KharonSocket", "sendMessage: socket is null")
+            return false
+        }
+        if (_state.value !is ConnectionState.Connected) {
+            android.util.Log.e("KharonSocket", "sendMessage: not connected, state=${_state.value}")
+            return false
+        }
 
         val encrypted = crypto.encrypt(plaintext, recipientPubKey, mySecretKey)
 

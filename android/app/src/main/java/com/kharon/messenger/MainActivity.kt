@@ -100,19 +100,18 @@ fun KharonMessengerApp() {
 
             // ── Чат ───────────────────────────────────────────────────────────
             composable(
-                route     = "chat/{pubKey}/{name}",
+                route     = "chat/{contactPubKey}/{name}",
                 arguments = listOf(
-                    navArgument("pubKey") { type = NavType.StringType },
-                    navArgument("name")   { type = NavType.StringType },
+                    navArgument("contactPubKey") { type = NavType.StringType },
+                    navArgument("name")          { type = NavType.StringType },
                 )
             ) { backStack ->
-                val rawKey  = backStack.arguments?.getString("pubKey") ?: ""
+                val rawKey  = backStack.arguments?.getString("contactPubKey") ?: ""
                 val rawName = backStack.arguments?.getString("name") ?: ""
-                val pubKey  = URLDecoder.decode(rawKey, StandardCharsets.UTF_8.name())
                 val name    = URLDecoder.decode(rawName, StandardCharsets.UTF_8.name())
                 ChatScreen(
-                    contactName    = name,
-                    contactPubKey  = pubKey,
+                    contactName   = name,
+                    contactPubKey = URLDecoder.decode(rawKey, StandardCharsets.UTF_8.name()),
                 )
             }
 

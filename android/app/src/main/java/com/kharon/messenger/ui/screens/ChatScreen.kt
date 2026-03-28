@@ -42,16 +42,10 @@ fun ChatScreen(
     val colors     = theme.colors
     val listState  = rememberLazyListState()
 
-    LaunchedEffect(contactPubKey) {
-        if (contactPubKey.isNotEmpty()) {
-            viewModel.contactPubKey = contactPubKey
-        }
-    }
+
 
     LaunchedEffect(contactPubKey) {
-        if (contactPubKey.isNotEmpty()) {
-            viewModel.contactPubKey = contactPubKey
-        }
+        viewModel.init(contactPubKey)
     }
 
     LaunchedEffect(state.messages.size) {
