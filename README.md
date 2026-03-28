@@ -17,7 +17,7 @@
 [![Self-hosted](https://img.shields.io/badge/server-self--hosted-orange)](server/)
 
 > Эфемерный. Зашифрованный. Без слежки. На своём железе.
-**Читать на других языках:** [English](README.en.md) · [中文](README.zh.md) · [العربية](README.ar.md)
+**Читать на других языках:** [English](README.en.md) · [中文](README.zh.md) · [日本語](README.ja.md) · [العربية](README.ar.md)
 
 
 Kharon — минималистичный зашифрованный мессенджер для небольших команд.   
