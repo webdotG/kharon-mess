@@ -110,10 +110,9 @@ fun KharonMessengerApp() {
                 val rawName = backStack.arguments?.getString("name") ?: ""
                 val pubKey  = URLDecoder.decode(rawKey, StandardCharsets.UTF_8.name())
                 val name    = URLDecoder.decode(rawName, StandardCharsets.UTF_8.name())
-                // Передаём декодированный ключ в SavedStateHandle
-                backStack.arguments?.putString("contactPubKey", pubKey)
                 ChatScreen(
-                    contactName = name,
+                    contactName    = name,
+                    contactPubKey  = pubKey,
                 )
             }
 

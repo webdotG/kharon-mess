@@ -34,12 +34,25 @@ import java.util.*
 @Composable
 fun ChatScreen(
     contactName: String,
+    contactPubKey: String = "",
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val state     by viewModel.uiState.collectAsState()
     val theme      = KharonUI.current
     val colors     = theme.colors
     val listState  = rememberLazyListState()
+
+    LaunchedEffect(contactPubKey) {
+        if (contactPubKey.isNotEmpty()) {
+            viewModel.contactPubKey = contactPubKey
+        }
+    }
+
+    LaunchedEffect(contactPubKey) {
+        if (contactPubKey.isNotEmpty()) {
+            viewModel.contactPubKey = contactPubKey
+        }
+    }
 
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {

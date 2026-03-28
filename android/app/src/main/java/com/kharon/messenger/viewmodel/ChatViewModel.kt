@@ -32,7 +32,7 @@ class ChatViewModel @Inject constructor(
     savedState: SavedStateHandle,
 ) : ViewModel() {
 
-    private val contactPubKey = savedState.get<String>("contactPubKey") ?: ""
+    var contactPubKey: String = ""
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState
