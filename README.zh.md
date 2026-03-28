@@ -1,4 +1,4 @@
-<p align="center"><img src="logo.png" width="280"/></p>
+
 
 # KHARON MESSENGER
 ```
