@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.png" width="300"/></p>
+
 # KHARON MESSENGER
 ```
  ██╗  ██╗██╗  ██╗ █████╗ ██████╗  ██████╗ ███╗  ██╗
@@ -8,6 +10,18 @@
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚══╝
  ──────────────────── MESSENGER v1.0 ─────────────────
 ```
+
+
+---
+
+## Установка через F-Droid
+
+1. Установи [F-Droid](https://f-droid.org)
+2. Settings → Repositories → **+**
+3. Добавь репозиторий: `https://webdotg.github.io/kharon-fdroid/repo`
+4. Найди **Kharon Messenger** и установи
+
+---
 
 > Эфемерный. Зашифрованный. Без слежки. На своём железе.
 
