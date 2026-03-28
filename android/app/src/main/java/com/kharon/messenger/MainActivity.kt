@@ -7,8 +7,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
+import java.net.URLEncoder
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -62,8 +66,18 @@ fun KharonMessengerApp() {
     val navController = rememberNavController()
 
     // Тема — хранится в памяти, при желании можно сохранять в prefs
-    var currentThemeId by remember { mutableStateOf(ThemeId.MODERN) }
-    val currentTheme   = remember(currentThemeId) { themeById(currentThemeId) }
+    var currentThemeId  by remember { mutableStateOf(ThemeId.DEFAULT) }
+    var currentFontSize by remember { mutableStateOf(FontSize.MEDIUM) }
+    val currentTheme = remember(currentThemeId, currentFontSize) {
+        val base = themeById(currentThemeId)
+        base.copy(
+            typography = base.typography.copy(
+                bodySize    = currentFontSize.body,
+                titleSize   = currentFontSize.title,
+                captionSize = currentFontSize.caption,
+            )
+        )
+    }
 
     KharonThemeProvider(theme = currentTheme) {
         NavHost(
@@ -75,7 +89,9 @@ fun KharonMessengerApp() {
             composable("contacts") {
                 ContactsScreen(
                     onContactClick  = { contact ->
-                        navController.navigate("chat/${contact.pubKey}/${contact.name}")
+                        val encodedKey  = URLEncoder.encode(contact.pubKey, StandardCharsets.UTF_8.name())
+                        val encodedName = URLEncoder.encode(contact.name, StandardCharsets.UTF_8.name())
+                        navController.navigate("chat/$encodedKey/$encodedName")
                     },
                     onAddContact    = { navController.navigate("add_contact") },
                     onSettingsClick = { navController.navigate("settings") },
@@ -90,7 +106,12 @@ fun KharonMessengerApp() {
                     navArgument("name")   { type = NavType.StringType },
                 )
             ) { backStack ->
-                val name = backStack.arguments?.getString("name") ?: ""
+                val rawKey  = backStack.arguments?.getString("pubKey") ?: ""
+                val rawName = backStack.arguments?.getString("name") ?: ""
+                val pubKey  = URLDecoder.decode(rawKey, StandardCharsets.UTF_8.name())
+                val name    = URLDecoder.decode(rawName, StandardCharsets.UTF_8.name())
+                // Передаём декодированный ключ в SavedStateHandle
+                backStack.arguments?.putString("contactPubKey", pubKey)
                 ChatScreen(
                     contactName = name,
                 )
@@ -107,9 +128,11 @@ fun KharonMessengerApp() {
             // ── Настройки / смена темы ────────────────────────────────────────
             composable("settings") {
                 SettingsScreen(
-                    currentThemeId = currentThemeId,
-                    onThemeSelect  = { currentThemeId = it },
-                    onBack         = { navController.popBackStack() },
+                    currentThemeId  = currentThemeId,
+                    currentFontSize = currentFontSize,
+                    onThemeSelect   = { currentThemeId = it },
+                    onFontSelect    = { currentFontSize = it },
+                    onBack          = { navController.popBackStack() },
                 )
             }
         }

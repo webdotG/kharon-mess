@@ -21,6 +21,7 @@ import com.kharon.messenger.model.Contact
 import com.kharon.messenger.network.ConnectionState
 import com.kharon.messenger.ui.theme.KharonTheme
 import com.kharon.messenger.ui.theme.KharonUI
+import com.kharon.messenger.ui.theme.ThemeId
 import com.kharon.messenger.viewmodel.ContactsViewModel
 
 private val LOGO = """
@@ -43,6 +44,7 @@ fun ContactsScreen(
     val state  by viewModel.uiState.collectAsState()
     val theme   = KharonUI.current
     val colors  = theme.colors
+    val isTerminal = theme.id == ThemeId.TERMINAL_DARK || theme.id == ThemeId.TERMINAL_LIGHT
 
     Column(
         modifier = Modifier
@@ -75,11 +77,17 @@ fun ContactsScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment     = Alignment.CenterVertically,
         ) {
-            val (statusText, statusColor) = when (state.connection) {
-                is ConnectionState.Connected    -> "[*] CONNECTED"    to colors.online
-                is ConnectionState.Connecting   -> "[~] CONNECTING..." to colors.subtle
-                is ConnectionState.Disconnected -> "[!] OFFLINE"      to colors.offline
-                is ConnectionState.Error        -> "[!] ERROR"        to colors.offline
+            val statusText = when (state.connection) {
+                is ConnectionState.Connected    -> if (isTerminal) "[*] CONNECTED" else "● online"
+                is ConnectionState.Connecting   -> if (isTerminal) "[~] CONNECTING..." else "○ connecting"
+                is ConnectionState.Disconnected -> if (isTerminal) "[!] OFFLINE" else "○ offline"
+                is ConnectionState.Error        -> if (isTerminal) "[!] ERROR" else "✗ error"
+            }
+            val statusColor = when (state.connection) {
+                is ConnectionState.Connected    -> colors.online
+                is ConnectionState.Connecting   -> colors.subtle
+                is ConnectionState.Disconnected -> colors.offline
+                is ConnectionState.Error        -> colors.offline
             }
             Text(
                 text       = statusText,
@@ -105,7 +113,7 @@ fun ContactsScreen(
                 .padding(horizontal = 12.dp, vertical = 4.dp),
         ) {
             Text(
-                text       = "> CONTACTS (${state.contacts.size})",
+                text       = if (isTerminal) "> CONTACTS (${state.contacts.size})" else "Contacts (${state.contacts.size})",
                 color      = colors.subtle,
                 fontSize   = theme.typography.captionSize,
                 fontFamily = theme.typography.fontFamily,

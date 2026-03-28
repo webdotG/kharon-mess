@@ -68,7 +68,7 @@ class KharonSocket @Inject constructor(
         // даже если он подписан доверенным CA
         .certificatePinner(
             CertificatePinner.Builder()
-                .add("YOUR_SERVER_DOMAIN_OR_IP", "sha256/YOUR_CERT_PIN_HERE")
+                .add("kharon-messenger.duckdns.org", "sha256/mrOaIg2JbLnqpoEdbcazxo7RXaR8k6gWoYynbTcxZ8U=")
                 .build()
         )
         .build()

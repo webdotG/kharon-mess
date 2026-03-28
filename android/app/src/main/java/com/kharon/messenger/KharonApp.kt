@@ -1,6 +1,8 @@
 package com.kharon.messenger
 
 import android.app.Application
+import android.os.StrictMode
+import net.sqlcipher.database.SQLiteDatabase
 import android.util.Log
 import dagger.hilt.android.HiltAndroidApp
 
@@ -8,6 +10,9 @@ import dagger.hilt.android.HiltAndroidApp
 class KharonApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Инициализируем SQLCipher нативные библиотеки заранее
+        // Без этого первый запрос к БД блокирует UI thread
+        SQLiteDatabase.loadLibs(this)
         if (isRooted()) {
             Log.w("Kharon", "[!] WARNING: Device appears to be rooted. Key security may be compromised.")
         }
