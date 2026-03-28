@@ -1,0 +1,26 @@
+# Server
+server/node_modules/
+server/certs/
+server/.env
+server/*.pem
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.iml
+*.apk
+*.aab
+
+# System
+.DS_Store
+*.log
+
+# Папка client — исходники до переноса в android/
+client/
+
+# Server env
+server/.env
+server/certs/
