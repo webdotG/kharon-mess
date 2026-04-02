@@ -75,37 +75,28 @@ class MainActivity : ComponentActivity() {
 }
 
 // ─── Корневой Composable ──────────────────────────────────────────────────────
-enum class OperationMode {
-    OFFLINE, HYBRID, ONLINE
-}
 
 @Composable
 fun KharonMessengerApp() {
     val navController = rememberNavController()
 
-var currentThemeId  by remember { mutableStateOf(ThemeId.DEFAULT) }
-    var currentFontSize by remember { mutableStateOf(FontSize.MEDIUM) }
+    var currentThemeId  by remember { mutableStateOf(ThemeId.DEFAULT) }
+    
+    // 2. ИСПРАВЛЕНО: Оставляем только один блок инициализации темы
+    val currentTheme = remember(currentThemeId) { 
+        themeById(currentThemeId) 
+    }
     
     var currentMode     by remember { mutableStateOf<ReceptionMode>(ReceptionMode.LIVE) }
     var userCredits     by remember { mutableStateOf(0) }
 
-    val currentTheme = remember(currentThemeId, currentFontSize) {
-        val base = themeById(currentThemeId)
-        base.copy(
-            typography = base.typography.copy(
-                bodySize    = currentFontSize.body,
-                titleSize   = currentFontSize.title,
-                captionSize = currentFontSize.caption,
-            )
-        )
-    }
 
     KharonThemeProvider(theme = currentTheme) {
         NavHost(
             navController    = navController,
             startDestination = "contacts",
         ) {
-// ... (внутри NavHost, строки 102-145)
+
             composable("contacts") {
                 ContactsScreen(
                     onContactClick  = { contact ->
@@ -115,8 +106,8 @@ var currentThemeId  by remember { mutableStateOf(ThemeId.DEFAULT) }
                     },
                     onAddContact    = { navController.navigate("add_contact") },
                     onSettingsClick = { navController.navigate("settings") },
-                    userCredits     = userCredits, // ПЕРЕДАЧА СТЕЙТА
-                    currentMode     = currentMode  // ПЕРЕДАЧА СТЕЙТА
+                    userCredits     = userCredits,
+                    currentMode     = currentMode
                 )
             }
 
@@ -133,8 +124,8 @@ var currentThemeId  by remember { mutableStateOf(ThemeId.DEFAULT) }
                 ChatScreen(
                     contactName   = name,
                     contactPubKey = URLDecoder.decode(rawKey, StandardCharsets.UTF_8.name()),
-                    userCredits   = userCredits, // ПЕРЕДАЧА СТЕЙТА
-                    currentMode   = currentMode  // ПЕРЕДАЧА СТЕЙТА
+                    userCredits   = userCredits,
+                    currentMode   = currentMode
                 )
             }
 
@@ -142,18 +133,16 @@ var currentThemeId  by remember { mutableStateOf(ThemeId.DEFAULT) }
                 AddContactScreen(
                     onBack      = { navController.popBackStack() },
                     onAdded     = { navController.popBackStack() },
-                    userCredits = userCredits // ПЕРЕДАЧА СТЕЙТА
+                    userCredits = userCredits
                 )
             }
 
             composable("settings") {
                 SettingsScreen(
                     currentThemeId  = currentThemeId,
-                    currentFontSize = currentFontSize,
-                    currentMode     = currentMode,    // ПЕРЕДАЧА СТЕЙТА
+                    currentMode     = currentMode,
                     onThemeSelect   = { currentThemeId = it },
-                    onFontSelect    = { currentFontSize = it },
-                    onModeSelect    = { currentMode = it }, // CALLBACK
+                    onModeSelect    = { currentMode = it },
                     onBack          = { navController.popBackStack() },
                 )
             }

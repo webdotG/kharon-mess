@@ -39,6 +39,7 @@ fun ContactsScreen(
             .background(colors.background)
             .systemBarsPadding()
     ) {
+        // --- Header ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -62,11 +63,12 @@ fun ContactsScreen(
             )
         }
 
+        // --- Network Status Bar ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(colors.surface)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             val statusColor = when (state.connection) {
@@ -79,8 +81,10 @@ fun ContactsScreen(
                 fontSize = 14.sp,
                 fontFamily = theme.typography.fontFamily
             )
+            
+            // ИСПРАВЛЕНО: Теперь выводит "ОКНО СВЯЗИ: 15 МИН" вместо "PULSE_15"
             Text(
-                text = "MODE: ${currentMode.name}",
+                text = "MODE: ${currentMode.label}",
                 color = colors.subtle,
                 fontSize = 14.sp,
                 fontFamily = theme.typography.fontFamily
@@ -95,6 +99,7 @@ fun ContactsScreen(
             modifier = Modifier.padding(12.dp)
         )
 
+        // --- Contact List ---
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(state.contacts.withIndex().toList(), key = { it.value.pubKey }) { (idx, contact) ->
                 ContactRow(
@@ -107,6 +112,7 @@ fun ContactsScreen(
             }
         }
 
+        // --- Bottom Navigation / Actions ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -117,7 +123,7 @@ fun ContactsScreen(
             Text(
                 "[+] ADD_NODE", 
                 color = colors.primary, 
-                fontSize = 18.sp,
+                fontSize = 16.sp,
                 fontFamily = theme.typography.fontFamily,
                 modifier = Modifier.clickable { onAddContact() }
             )

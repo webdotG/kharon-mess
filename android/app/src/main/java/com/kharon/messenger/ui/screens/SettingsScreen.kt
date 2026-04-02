@@ -24,10 +24,8 @@ import com.kharon.messenger.ui.theme.*
 @Composable
 fun SettingsScreen(
     currentThemeId: ThemeId,
-    currentFontSize: FontSize,
     currentMode: ReceptionMode,
     onThemeSelect: (ThemeId) -> Unit,
-    onFontSelect: (FontSize) -> Unit,
     onModeSelect: (ReceptionMode) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -43,6 +41,7 @@ fun SettingsScreen(
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
     ) {
+        // --- Title Bar ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -70,42 +69,8 @@ fun SettingsScreen(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            SectionLabel("// FONT SIZE", isTerminal, theme)
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FontSize.entries.forEach { fs ->
-                    val selected = fs == currentFontSize
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(theme.shapes.buttonRadius))
-                            .background(if (selected) colors.primary else colors.surfaceVariant)
-                            .clickable { onFontSelect(fs) }
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = fs.icon,
-                                color = if (selected) colors.onPrimary else colors.onSurface,
-                                fontSize = 20.sp,
-                                fontFamily = theme.typography.fontFamily,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Text(
-                                text = fs.label,
-                                color = if (selected) colors.onPrimary else colors.subtle,
-                                fontSize = 14.sp,
-                                fontFamily = theme.typography.fontFamily,
-                            )
-                        }
-                    }
-                }
-            }
-
+            // 2. Секция // NETWORK (RECEPTION MODE)
             SectionLabel("// NETWORK (RECEPTION MODE)", isTerminal, theme)
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -129,6 +94,7 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
+                            // Теперь использует обновленный "ОКНО СВЯЗИ..." из ReceptionMode
                             text = if (selected && isTerminal) "> ${mode.label}" else mode.label,
                             color = if (selected) colors.primary else colors.onBackground,
                             fontSize = 18.sp,
@@ -146,6 +112,7 @@ fun SettingsScreen(
                 }
             }
 
+            // 3. Секция // THEME
             SectionLabel("// THEME", isTerminal, theme)
 
             AllThemes.forEach { t ->
@@ -196,8 +163,8 @@ fun SettingsScreen(
                         }
                     }
                 }
-                Spacer(Modifier.height(8.dp))
             }
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
@@ -214,7 +181,7 @@ private fun SectionLabel(text: String, isTerminal: Boolean, theme: KharonTheme) 
         Text(
             text = theme.dimensions.dividerChar.repeat(40),
             color = theme.colors.divider,
-            fontSize = 14.sp,
+            fontSize = 16.sp,
             fontFamily = theme.typography.fontFamily,
         )
     }

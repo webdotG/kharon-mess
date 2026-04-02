@@ -97,6 +97,8 @@ private fun TitleBar(
     theme: KharonTheme,
 ) {
     val colors = theme.colors
+    
+    // 1. Подготовка данных ДО вызова UI
     val (statusText, statusColor) = when (connection) {
         is ConnectionState.Connected -> "[ONLINE]" to colors.online
         is ConnectionState.Connecting -> "[...]" to colors.subtle
@@ -104,6 +106,13 @@ private fun TitleBar(
         is ConnectionState.Error -> "[ERROR]" to colors.offline
     }
 
+    val intervalText = if (mode.name == "LIVE") {
+        "ПРЯМАЯ СВЯЗЬ (В ЭФИРЕ)"
+    } else {
+        "ОКНО СВЯЗИ: КАЖДЫЕ ${mode.minutes} МИН"
+    }
+
+    // 2. Только теперь декларация UI
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -129,8 +138,9 @@ private fun TitleBar(
                 fontFamily = theme.typography.fontFamily,
             )
         }
+        
         Text(
-            text = "MODE: ${mode.label} | SYNC: OK",
+            text = "$intervalText | СИНХРОНИЗАЦИЯ: OK",
             color = colors.subtle,
             fontSize = 12.sp,
             fontFamily = theme.typography.fontFamily,
