@@ -101,12 +101,11 @@ fun Modifier.win95Border(
 fun Modifier.themedSurface(
     theme: KharonTheme = LocalKharonUI.current
 ): Modifier = when (theme.shapes.borderStyle) {
-    BorderStyle.NONE  -> this.win95Border(
+    BorderStyle.NONE    -> this.win95Border(
         highlight  = theme.colors.buttonHighlight,
         shadow     = theme.colors.buttonShadow,
         darkShadow = Color(0xFF000000),
         face       = theme.colors.buttonFace,
     )
     BorderStyle.ROUNDED -> this
-    BorderStyle.NONE    -> this
 }
