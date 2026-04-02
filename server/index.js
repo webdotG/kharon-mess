@@ -10,8 +10,6 @@ const PORT       = parseInt(process.env.PORT           ?? '3000')
 const RATE_LIMIT = parseInt(process.env.MSG_RATE_LIMIT ?? '3')
 const BUCKET_MAX = parseInt(process.env.MSG_BUCKET_MAX ?? '9')
 
-// Token bucket: refill at RATE_LIMIT tokens/sec, max BUCKET_MAX
-// Computed lazily on each message — no per-connection timers
 function makeBucket() {
   return { tokens: BUCKET_MAX, lastRefil: Date.now() }
 }
@@ -37,32 +35,54 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server, maxPayload: 8192 })
 
+const interval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      console.warn(`[ws] terminating zombie ip=${ws._remoteIp || 'unknown'}`)
+      return ws.terminate()
+    }
+    ws.isAlive = false
+    ws.ping()
+  })
+}, 30_000)
+
 wss.on('connection', (ws, req) => {
   const ip = req.headers['x-real-ip'] || req.socket.remoteAddress || 'unknown'
+  ws._remoteIp = ip
+  ws.isAlive = true
+  ws.on('pong', () => { ws.isAlive = true })
 
   let clientKey  = null
   let identified = false
   const bucket   = makeBucket()
 
   const helloTimeout = setTimeout(() => {
-    if (!identified) ws.close(1008, 'hello_timeout')
+    if (!identified) {
+      console.warn(`[SECURITY] hello_timeout ip=${ip}`)
+      ws.close(1008, 'hello_timeout')
+    }
   }, 10_000)
 
   ws.on('message', (raw) => {
     if (!consumeToken(bucket)) {
-      console.warn(`[ws] rate_limit  ip=${ip}`)
+      console.warn(`[SECURITY] rate_limit ip=${ip}`)
       ws.close(1008, 'rate_limit_exceeded')
       return
     }
 
     if (raw.length > 8192) {
+      console.warn(`[SECURITY] payload_too_large ip=${ip}`)
       ws.close(1009, 'message_too_large')
       return
     }
 
     let msg
     try { msg = JSON.parse(raw) }
-    catch { send(ws, { type: 'error', message: 'invalid_json' }); return }
+    catch { 
+      console.warn(`[SECURITY] invalid_json ip=${ip}`)
+      send(ws, { type: 'error', message: 'invalid_json' })
+      return 
+    }
 
     if (typeof msg !== 'object' || typeof msg.type !== 'string') {
       send(ws, { type: 'error', message: 'invalid_message' })
@@ -70,10 +90,14 @@ wss.on('connection', (ws, req) => {
     }
 
     switch (msg.type) {
-      case 'hello': {
+      case 'hello':
         if (identified) { send(ws, { type: 'error', message: 'already_identified' }); return }
-        const result = hub.register(msg.pubKey, ws, ip)
+        
+        // msg.reception_mode в регистрацию
+        const result = hub.register(msg.pubKey, ws, ip, msg.reception_mode)
+        
         if (!result.ok) {
+          console.warn(`[SECURITY] reg_failed reason=${result.reason} ip=${ip}`)
           send(ws, { type: 'error', message: result.reason })
           ws.close(1008, result.reason)
           return
@@ -81,22 +105,25 @@ wss.on('connection', (ws, req) => {
         clientKey  = msg.pubKey
         identified = true
         clearTimeout(helloTimeout)
-        send(ws, { type: 'welcome', peersOnline: hub.clients.size })
+        
+        // о режиме в welcome
+        send(ws, { 
+          type: 'welcome', 
+          peersOnline: hub.clients.size,
+          mode: msg.reception_mode || 'LIVE' 
+        })
         break
-      }
 
-      case 'msg': {
+      case 'msg':
         if (!identified) { send(ws, { type: 'error', message: 'not_identified' }); return }
-        const result = hub.route(clientKey, msg.to, msg.payload, msg.id)
-        if (!result.ok) { send(ws, { type: 'error', message: result.reason }); return }
-        send(ws, { type: 'ack', id: result.id })
+        const resRoute = hub.route(clientKey, msg.to, msg.payload, msg.id)
+        if (!resRoute.ok) { send(ws, { type: 'error', message: resRoute.reason }); return }
+        send(ws, { type: 'ack', id: resRoute.id })
         break
-      }
 
-      case 'ping': {
+      case 'ping':
         send(ws, { type: 'pong' })
         break
-      }
 
       default:
         send(ws, { type: 'error', message: 'unknown_type' })
@@ -106,10 +133,10 @@ wss.on('connection', (ws, req) => {
   ws.on('close', (code) => {
     clearTimeout(helloTimeout)
     if (clientKey) hub.unregister(clientKey, ip)
-    console.log(`[ws] closed  code=${code}`)
+    console.log(`[ws] closed ip=${ip} code=${code}`)
   })
 
-  ws.on('error', (err) => console.error('[ws] error:', err.message))
+  ws.on('error', (err) => console.error(`[ws] error ip=${ip}:`, err.message))
 })
 
 function send(ws, data) {
@@ -122,6 +149,7 @@ server.listen(PORT, '0.0.0.0', () => {
 
 process.on('SIGTERM', () => {
   console.log('[kharon] shutdown')
-  hub.destroy()
+  clearInterval(interval)
+  hub.terminateAll()
   wss.close(() => server.close(() => process.exit(0)))
 })

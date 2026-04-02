@@ -1,5 +1,7 @@
 'use strict'
 
+const crypto = require('crypto')
+
 const MSG_TTL_MS        = parseInt(process.env.MSG_TTL_MS         ?? '120000')
 const MAX_MSG_SIZE      = parseInt(process.env.MAX_MSG_SIZE       ?? '4096')
 const MAX_QUEUE         = parseInt(process.env.MAX_QUEUE_PER_USER ?? '50')
@@ -7,7 +9,6 @@ const MAX_CONNS_PER_IP  = parseInt(process.env.MAX_CONNS_PER_IP   ?? '3')
 const MAX_CLIENTS       = parseInt(process.env.MAX_CLIENTS        ?? '100')
 const SWEEP_INTERVAL_MS = parseInt(process.env.SWEEP_INTERVAL_MS  ?? '30000')
 
-// X25519 pubkey = 32 bytes = 44 base64 chars
 function isValidPubKey(key) {
   return typeof key === 'string'
     && key.length === 44
@@ -23,17 +24,16 @@ function isValidPayload(payload) {
 
 class Hub {
   constructor() {
-    this.clients       = new Map() // pubKey → WebSocket
-    this.queues        = new Map() // pubKey → [{ id, from, payload, expiresAt }]
-    this.ipConnections = new Map() // ip → connection count
+    this.clients       = new Map()
+    this.queues        = new Map()
+    this.ipConnections = new Map()
     this.stats         = { delivered: 0, expired: 0, rejected: 0, blocked: 0 }
 
-    // Single sweep interval instead of per-message timers
     this._sweepTimer = setInterval(() => this._sweep(), SWEEP_INTERVAL_MS)
     this._statsTimer = setInterval(() => this._logStats(), 5 * 60 * 1000)
   }
 
-  register(pubKey, ws, ip) {
+register(pubKey, ws, ip, mode = 'LIVE') {
     if (!isValidPubKey(pubKey)) return { ok: false, reason: 'invalid_pubKey' }
 
     const ipCount = this.ipConnections.get(ip) ?? 0
@@ -48,7 +48,6 @@ class Hub {
       return { ok: false, reason: 'server_full' }
     }
 
-    // Evict stale connection if same key reconnects
     const existing = this.clients.get(pubKey)
     if (existing && existing !== ws) {
       existing.close(1008, 'replaced')
@@ -56,9 +55,11 @@ class Hub {
     }
 
     ws._remoteIp = ip
+    ws._receptionMode = mode // режим прямо в объекте сокета
+    
     this.clients.set(pubKey, ws)
     this.ipConnections.set(ip, ipCount + 1)
-    console.log(`[hub] connect  peers=${this.clients.size}`)
+    console.log(`[hub] connect  peers=${this.clients.size} mode=${mode}`)
 
     this._flushQueue(pubKey, ws)
     return { ok: true }
@@ -101,19 +102,29 @@ class Hub {
 
   _flushQueue(pubKey, ws) {
     const queue = this.queues.get(pubKey)
-    if (!queue?.length) return
-    const now = Date.now()
-    for (const msg of queue) {
-      if (msg.expiresAt <= now) { this.stats.expired++; continue }
-      const { expiresAt, ...envelope } = msg
-      this._send(ws, envelope)
-      this.stats.delivered++
+    const mode = ws._receptionMode || 'LIVE'
+
+    // очередь есть — выгружаем
+    if (queue && queue.length > 0) {
+      const now = Date.now()
+      for (const msg of queue) {
+        if (msg.expiresAt <= now) { this.stats.expired++; continue }
+        const { expiresAt, ...envelope } = msg
+        this._send(ws, envelope)
+        this.stats.delivered++
+      }
+      this.queues.delete(pubKey)
     }
-    this.queues.delete(pubKey)
+
+    // всегда шлем queue_end после очистки очереди
+    if (mode !== 'LIVE') {
+      setTimeout(() => {
+        this._send(ws, { type: 'queue_end' })
+        console.log(`[hub] queue_end sent to ${pubKey.substring(0,8)}...`)
+      }, 100) // чтобы сообщения успели улететь
+    }
   }
 
-  // Sweep runs once per interval — no per-message timers
-  // Messages expire at expiresAt timestamp, max ~30s late
   _sweep() {
     const now = Date.now()
     let expired = 0
@@ -140,7 +151,7 @@ class Hub {
   }
 
   _generateId() {
-    return Math.random().toString(36).slice(2) + Date.now().toString(36)
+    return crypto.randomBytes(8).toString('hex') + Date.now().toString(36)
   }
 
   _logStats() {
@@ -148,9 +159,18 @@ class Hub {
     console.log(`[hub] stats  peers=${this.clients.size}  delivered=${delivered}  expired=${expired}  rejected=${rejected}  blocked=${blocked}`)
   }
 
-  destroy() {
+  terminateAll() {
     clearInterval(this._sweepTimer)
     clearInterval(this._statsTimer)
+    for (const [pubKey, ws] of this.clients) {
+      try {
+        ws.close(1001, 'server_shutdown')
+        ws.terminate() 
+      } catch (e) {}
+    }
+    this.clients.clear()
+    this.queues.clear()
+    this.ipConnections.clear()
   }
 }
 

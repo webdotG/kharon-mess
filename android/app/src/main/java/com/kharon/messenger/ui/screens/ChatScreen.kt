@@ -6,24 +6,20 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.kharon.messenger.model.ChatMessage
 import com.kharon.messenger.model.MessageStatus
+import com.kharon.messenger.model.ReceptionMode
 import com.kharon.messenger.network.ConnectionState
 import com.kharon.messenger.ui.theme.KharonTheme
 import com.kharon.messenger.ui.theme.KharonUI
@@ -35,14 +31,14 @@ import java.util.*
 fun ChatScreen(
     contactName: String,
     contactPubKey: String = "",
+    currentMode: ReceptionMode,
+    userCredits: Int,
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
-    val state     by viewModel.uiState.collectAsState()
-    val theme      = KharonUI.current
-    val colors     = theme.colors
-    val listState  = rememberLazyListState()
-
-
+    val state by viewModel.uiState.collectAsState()
+    val theme = KharonUI.current
+    val colors = theme.colors
+    val listState = rememberLazyListState()
 
     LaunchedEffect(contactPubKey) {
         viewModel.init(contactPubKey)
@@ -54,140 +50,163 @@ fun ChatScreen(
         }
     }
 
-    // imePadding на корневом Column — весь контент двигается над клавиатурой
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.background)
-            .systemBarsPadding()   // отступ от челки и навбара
-            .imePadding()          // двигаемся над клавиатурой
+            .systemBarsPadding()
+            .imePadding()
     ) {
-        // ── Title bar ─────────────────────────────────────────────────────────
         TitleBar(
-            title      = contactName,
+            title = contactName,
             connection = state.connection,
-            theme      = theme,
+            mode = currentMode,
+            theme = theme
         )
 
-        // ── Сообщения — занимают всё свободное место ──────────────────────────
         LazyColumn(
-            state          = listState,
-            modifier       = Modifier.weight(1f),
+            state = listState,
+            modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(state.messages, key = { it.id }) { msg ->
-                MessageBubble(msg = msg, theme = theme)
+                MessageBubble(
+                    msg = msg, 
+                    theme = theme,
+                    onCancel = { /* viewModel.cancelMessage(msg.id) */ }
+                )
             }
         }
 
-        // ── Input bar — всегда прижат к низу над клавиатурой ─────────────────
         InputBar(
-            text     = state.inputText,
+            text = state.inputText,
+            credits = userCredits,
             onChange = viewModel::onInputChange,
-            onSend   = viewModel::sendMessage,
-            theme    = theme,
+            onSend = viewModel::sendMessage,
+            theme = theme
         )
     }
 }
 
 @Composable
 private fun TitleBar(
-    title:      String,
+    title: String,
     connection: ConnectionState,
-    theme:      KharonTheme,
+    mode: ReceptionMode,
+    theme: KharonTheme,
 ) {
     val colors = theme.colors
-
     val (statusText, statusColor) = when (connection) {
-        is ConnectionState.Connected    -> "[ONLINE]"  to colors.online
-        is ConnectionState.Connecting   -> "[...]"     to colors.subtle
+        is ConnectionState.Connected -> "[ONLINE]" to colors.online
+        is ConnectionState.Connecting -> "[...]" to colors.subtle
         is ConnectionState.Disconnected -> "[OFFLINE]" to colors.offline
-        is ConnectionState.Error        -> "[ERROR]"   to colors.offline
+        is ConnectionState.Error -> "[ERROR]" to colors.offline
     }
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.titleBar)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment     = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .padding(horizontal = 12.dp, vertical = 12.dp)
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "> $title",
+                color = colors.titleBarText,
+                fontSize = 20.sp,
+                fontFamily = theme.typography.fontFamily,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = statusText,
+                color = statusColor,
+                fontSize = 14.sp,
+                fontFamily = theme.typography.fontFamily,
+            )
+        }
         Text(
-            text       = "> $title",
-            color      = colors.titleBarText,
-            fontSize   = theme.typography.titleSize,
+            text = "MODE: ${mode.label} | SYNC: OK",
+            color = colors.subtle,
+            fontSize = 12.sp,
             fontFamily = theme.typography.fontFamily,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text       = statusText,
-            color      = statusColor,
-            fontSize   = theme.typography.captionSize,
-            fontFamily = theme.typography.fontFamily,
+            modifier = Modifier.padding(top = 2.dp)
         )
     }
 }
 
 @Composable
 private fun MessageBubble(
-    msg:   ChatMessage,
+    msg: ChatMessage,
     theme: KharonTheme,
+    onCancel: () -> Unit
 ) {
-    val colors     = theme.colors
-    val isOut      = msg.isOutgoing
+    val colors = theme.colors
+    val isOut = msg.isOutgoing
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
 
     Row(
-        modifier              = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isOut) Arrangement.End else Arrangement.Start,
     ) {
-        Column(
-            modifier = Modifier.widthIn(max = 300.dp),
-        ) {
-            // Префикс в терминальном стиле
-            Text(
-                text = if (isOut) "you > " else "${theme.typography.fontFamily}< ",
-                color      = colors.subtle,
-                fontSize   = theme.typography.captionSize,
-                fontFamily = theme.typography.fontFamily,
-            )
+        Column(modifier = Modifier.widthIn(max = 320.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = if (isOut) "you > " else "peer < ",
+                    color = colors.subtle,
+                    fontSize = 14.sp,
+                    fontFamily = theme.typography.fontFamily,
+                )
+                if (isOut && msg.status == MessageStatus.SENDING) {
+                    Text(
+                        text = " [SENDING] [X]",
+                        color = colors.offline,
+                        fontSize = 14.sp,
+                        fontFamily = theme.typography.fontFamily,
+                        modifier = Modifier.clickable { onCancel() }
+                    )
+                }
+            }
 
             Box(
                 modifier = Modifier
                     .background(if (isOut) colors.msgOut else colors.msgIn)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Column {
                     Text(
-                        text       = msg.text,
-                        color      = if (isOut) colors.msgOutText else colors.msgInText,
-                        fontSize   = theme.typography.bodySize,
+                        text = msg.text,
+                        color = if (isOut) colors.msgOutText else colors.msgInText,
+                        fontSize = 18.sp,
                         fontFamily = theme.typography.fontFamily,
                     )
                     Row(
-                        modifier              = Modifier.align(Alignment.End),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment     = Alignment.CenterVertically,
+                        modifier = Modifier.align(Alignment.End),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text       = timeFormat.format(Date(msg.timestamp)),
-                            color      = colors.subtle,
-                            fontSize   = theme.typography.captionSize,
+                            text = timeFormat.format(Date(msg.timestamp)),
+                            color = colors.subtle,
+                            fontSize = 12.sp,
                             fontFamily = theme.typography.fontFamily,
                         )
                         if (isOut) {
                             Text(
                                 text = when (msg.status) {
-                                    MessageStatus.SENDING   -> "~"
-                                    MessageStatus.SENT      -> "+"
+                                    MessageStatus.SENDING -> "~"
+                                    MessageStatus.SENT -> "+"
                                     MessageStatus.DELIVERED -> "++"
-                                    MessageStatus.FAILED    -> "!"
+                                    MessageStatus.FAILED -> "!"
                                 },
-                                color      = colors.subtle,
-                                fontSize   = theme.typography.captionSize,
+                                color = if(msg.status == MessageStatus.DELIVERED) colors.primary else colors.subtle,
+                                fontSize = 14.sp,
                                 fontFamily = theme.typography.fontFamily,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -199,10 +218,11 @@ private fun MessageBubble(
 
 @Composable
 private fun InputBar(
-    text:     String,
+    text: String,
+    credits: Int,
     onChange: (String) -> Unit,
-    onSend:   () -> Unit,
-    theme:    KharonTheme,
+    onSend: () -> Unit,
+    theme: KharonTheme,
 ) {
     val colors = theme.colors
 
@@ -210,55 +230,53 @@ private fun InputBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.surface)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text       = "> ",
-            color      = colors.primary,
-            fontSize   = theme.typography.bodySize,
-            fontFamily = theme.typography.fontFamily,
-            fontWeight = FontWeight.Bold,
-        )
-
-        BasicTextField(
-            value         = text,
-            onValueChange = { if (it.length <= 500) onChange(it) },
-            modifier      = Modifier
-                .weight(1f)
-                .background(colors.surfaceVariant)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            textStyle = TextStyle(
-                color      = colors.onSurface,
-                fontSize   = theme.typography.bodySize,
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "CREDITS: $credits (-10/msg)",
+                color = if (credits < 50) colors.offline else colors.subtle,
+                fontSize = 12.sp,
                 fontFamily = theme.typography.fontFamily,
-            ),
-            cursorBrush = SolidColor(colors.primary),
-            maxLines    = 4,
-            decorationBox = { inner ->
-                if (text.isEmpty()) {
-                    Text(
-                        "type message...",
-                        color      = colors.subtle,
-                        fontSize   = theme.typography.bodySize,
-                        fontFamily = theme.typography.fontFamily,
-                    )
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            BasicTextField(
+                value = text,
+                onValueChange = { if (it.length <= 500) onChange(it) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(colors.surfaceVariant)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                textStyle = TextStyle(
+                    color = colors.onSurface,
+                    fontSize = 18.sp,
+                    fontFamily = theme.typography.fontFamily,
+                ),
+                cursorBrush = SolidColor(colors.primary),
+                decorationBox = { inner ->
+                    if (text.isEmpty()) {
+                        Text(
+                            "enter command...",
+                            color = colors.subtle,
+                            fontSize = 18.sp,
+                            fontFamily = theme.typography.fontFamily,
+                        )
+                    }
+                    inner()
                 }
-                inner()
-            }
-        )
+            )
+        }
 
         Text(
-            text       = if (text.isNotBlank()) " [>]" else " [ ]",
-            color      = if (text.isNotBlank()) colors.primary else colors.subtle,
-            fontSize   = theme.typography.bodySize,
+            text = " [SEND]",
+            color = if (text.isNotBlank() && credits >= 10) colors.primary else colors.subtle,
+            fontSize = 18.sp,
             fontFamily = theme.typography.fontFamily,
             fontWeight = FontWeight.Bold,
-            modifier   = if (text.isNotBlank())
-                    Modifier.padding(start = 4.dp).clickable { onSend() }
-                else
-                    Modifier.padding(start = 4.dp)
+            modifier = Modifier
+                .padding(start = 8.dp)
+                .clickable(enabled = text.isNotBlank() && credits >= 10) { onSend() }
         )
     }
 }
-

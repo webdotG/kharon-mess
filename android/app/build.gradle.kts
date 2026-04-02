@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "com.kharon.messenger"
-        minSdk = 31
+        minSdk = 29
         targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
@@ -22,10 +22,15 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file(System.getenv("KEYSTORE_PATH") ?: "")
-            storePassword = System.getenv("KEYSTORE_PASS") ?: ""
-            keyAlias = System.getenv("KEY_ALIAS") ?: ""
-            keyPassword = System.getenv("KEY_PASS") ?: ""
+            val ksPath = (project.findProperty("KEYSTORE_PATH") as? String) ?: System.getenv("KEYSTORE_PATH")
+            val ksPass = (project.findProperty("KEYSTORE_PASS") as? String) ?: System.getenv("KEYSTORE_PASS")
+            val kAlias = (project.findProperty("KEY_ALIAS") as? String) ?: System.getenv("KEY_ALIAS")
+            val kPass = (project.findProperty("KEY_PASS") as? String) ?: System.getenv("KEY_PASS")
+
+            storeFile = if (!ksPath.isNullOrEmpty()) file(ksPath) else null
+            storePassword = ksPass
+            keyAlias = kAlias
+            keyPassword = kPass
         }
     }
 

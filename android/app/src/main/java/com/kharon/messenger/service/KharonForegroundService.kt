@@ -1,11 +1,7 @@
 package com.kharon.messenger.service
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
-import android.content.Intent
+import android.app.*
+import android.content.*
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.kharon.messenger.MainActivity
@@ -13,24 +9,11 @@ import com.kharon.messenger.R
 import com.kharon.messenger.crypto.CryptoManager
 import com.kharon.messenger.network.ConnectionState
 import com.kharon.messenger.network.KharonSocket
+import com.kharon.messenger.model.ReceptionMode
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import javax.inject.Inject
 
-/**
- * ForegroundService держит WebSocket соединение живым когда приложение в фоне.
- *
- * Без ForegroundService Android убьёт соединение через несколько минут.
- * Нотификация обязательна — это честно по отношению к пользователю
- * (он видит что приложение работает) и требуется Play Market политикой.
- *
- * Тип сервиса: dataSync — наиболее подходящий для мессенджеров.
- */
 @AndroidEntryPoint
 class KharonForegroundService : Service() {
 
@@ -38,6 +21,7 @@ class KharonForegroundService : Service() {
     @Inject lateinit var crypto: CryptoManager
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var currentMode = ReceptionMode.LIVE
 
     override fun onCreate() {
         super.onCreate()
@@ -46,6 +30,9 @@ class KharonForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val modeName = intent?.getStringExtra(EXTRA_MODE) ?: ReceptionMode.LIVE.name
+        currentMode = ReceptionMode.valueOf(modeName)
+
         when (intent?.action) {
             ACTION_START -> startSocket()
             ACTION_STOP  -> {
@@ -53,79 +40,75 @@ class KharonForegroundService : Service() {
                 stopSelf()
             }
         }
-        // STICKY — если сервис убит системой, перезапустить с последним intent
         return START_STICKY
     }
 
     private fun startSocket() {
         val keyPair = crypto.getOrCreateKeyPair()
-        socket.connect(keyPair.publicKey, keyPair.secretKey)
+        socket.connect(keyPair.publicKey, keyPair.secretKey, currentMode)
 
-        // Следим за состоянием соединения — обновляем нотификацию
         scope.launch {
             socket.state.collect { state ->
                 updateNotification(state)
+                // Если мы в пульсе и сокет закрылся - планируем следующий раз
+                if (state is ConnectionState.Disconnected && currentMode.minutes > 0) {
+                    scheduleNextPulse()
+                    stopSelf() 
+                }
             }
         }
 
-        // Keepalive ping каждые 30 секунд
-        // WebSocket соединения могут тихо умереть без трафика
-        scope.launch {
-            while (true) {
-                delay(30_000)
-                socket.ping()
+        if (currentMode == ReceptionMode.LIVE) {
+            scope.launch {
+                while (isActive) {
+                    delay(30_000)
+                    socket.ping()
+                }
             }
         }
     }
 
+    private fun scheduleNextPulse() {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(this, KharonForegroundService::class.java).apply {
+            action = ACTION_START
+            putExtra(EXTRA_MODE, currentMode.name)
+        }
+        val pendingIntent = PendingIntent.getService(
+            this, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val triggerAt = System.currentTimeMillis() + (currentMode.minutes * 60 * 1000)
+        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+    }
+
     override fun onDestroy() {
         scope.cancel()
-        socket.disconnect()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // ─── Нотификация ──────────────────────────────────────────────────────────
-
     private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "Kharon",
-            NotificationManager.IMPORTANCE_LOW   // LOW = без звука, без вибрации
-        ).apply {
-            description = "Kharon messenger connection"
-            setShowBadge(false)
-        }
-
-        getSystemService(NotificationManager::class.java)
-            .createNotificationChannel(channel)
+        val channel = NotificationChannel(CHANNEL_ID, "Kharon", NotificationManager.IMPORTANCE_LOW)
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     private fun buildNotification(state: ConnectionState): Notification {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        val intent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        val statusText = when (state) {
+            is ConnectionState.Connected -> "Connected"
+            is ConnectionState.Connecting -> "Connecting..."
+            else -> "Offline"
         }
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val (statusText, iconRes) = when (state) {
-            is ConnectionState.Connected    -> "Connected" to R.drawable.ic_notification_connected
-            is ConnectionState.Connecting   -> "Connecting..." to R.drawable.ic_notification_connecting
-            is ConnectionState.Disconnected -> "Disconnected" to R.drawable.ic_notification_disconnected
-            is ConnectionState.Error        -> "Connection error" to R.drawable.ic_notification_disconnected
-        }
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Kharon")
             .setContentText(statusText)
-            .setSmallIcon(iconRes)
+            .setSmallIcon(R.drawable.ic_notification_connected)
             .setContentIntent(pendingIntent)
-            .setOngoing(true)           // нельзя смахнуть
-            .setSilent(true)            // без звука
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setOngoing(true)
+            .setSilent(true)
             .build()
     }
 
@@ -137,6 +120,7 @@ class KharonForegroundService : Service() {
     companion object {
         const val ACTION_START = "com.kharon.messenger.START"
         const val ACTION_STOP  = "com.kharon.messenger.STOP"
+        const val EXTRA_MODE   = "extra_reception_mode"
         private const val CHANNEL_ID      = "kharon_service"
         private const val NOTIFICATION_ID = 1001
     }

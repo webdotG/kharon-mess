@@ -1,13 +1,15 @@
 package com.kharon.messenger
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
 import java.net.URLEncoder
@@ -17,6 +19,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.kharon.messenger.model.ReceptionMode
 import com.kharon.messenger.service.KharonForegroundService
 import com.kharon.messenger.ui.screens.*
 import com.kharon.messenger.ui.theme.*
@@ -25,9 +28,22 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    private fun requestBatteryOptimizationExemption() {
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        // Проверяем, не в белом ли мы списке уже
+        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+            try { startActivity(intent) } catch (e: Exception) { }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        requestBatteryOptimizationExemption()
+        
         // Запрет скриншотов и показа в switcher задач
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
@@ -49,7 +65,6 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         // Останавливаем сервис только если приложение закрыто свайпом
-        // (не при повороте экрана)
         if (isFinishing) {
             val intent = Intent(this, KharonForegroundService::class.java).apply {
                 action = KharonForegroundService.ACTION_STOP
@@ -60,14 +75,20 @@ class MainActivity : ComponentActivity() {
 }
 
 // ─── Корневой Composable ──────────────────────────────────────────────────────
+enum class OperationMode {
+    OFFLINE, HYBRID, ONLINE
+}
 
 @Composable
 fun KharonMessengerApp() {
     val navController = rememberNavController()
 
-    // Тема — хранится в памяти, при желании можно сохранять в prefs
-    var currentThemeId  by remember { mutableStateOf(ThemeId.DEFAULT) }
+var currentThemeId  by remember { mutableStateOf(ThemeId.DEFAULT) }
     var currentFontSize by remember { mutableStateOf(FontSize.MEDIUM) }
+    
+    var currentMode     by remember { mutableStateOf<ReceptionMode>(ReceptionMode.LIVE) }
+    var userCredits     by remember { mutableStateOf(0) }
+
     val currentTheme = remember(currentThemeId, currentFontSize) {
         val base = themeById(currentThemeId)
         base.copy(
@@ -84,8 +105,7 @@ fun KharonMessengerApp() {
             navController    = navController,
             startDestination = "contacts",
         ) {
-
-            // ── Контакты ──────────────────────────────────────────────────────
+// ... (внутри NavHost, строки 102-145)
             composable("contacts") {
                 ContactsScreen(
                     onContactClick  = { contact ->
@@ -95,10 +115,11 @@ fun KharonMessengerApp() {
                     },
                     onAddContact    = { navController.navigate("add_contact") },
                     onSettingsClick = { navController.navigate("settings") },
+                    userCredits     = userCredits, // ПЕРЕДАЧА СТЕЙТА
+                    currentMode     = currentMode  // ПЕРЕДАЧА СТЕЙТА
                 )
             }
 
-            // ── Чат ───────────────────────────────────────────────────────────
             composable(
                 route     = "chat/{contactPubKey}/{name}",
                 arguments = listOf(
@@ -112,24 +133,27 @@ fun KharonMessengerApp() {
                 ChatScreen(
                     contactName   = name,
                     contactPubKey = URLDecoder.decode(rawKey, StandardCharsets.UTF_8.name()),
+                    userCredits   = userCredits, // ПЕРЕДАЧА СТЕЙТА
+                    currentMode   = currentMode  // ПЕРЕДАЧА СТЕЙТА
                 )
             }
 
-            // ── Добавить контакт ──────────────────────────────────────────────
             composable("add_contact") {
                 AddContactScreen(
-                    onBack  = { navController.popBackStack() },
-                    onAdded = { navController.popBackStack() },
+                    onBack      = { navController.popBackStack() },
+                    onAdded     = { navController.popBackStack() },
+                    userCredits = userCredits // ПЕРЕДАЧА СТЕЙТА
                 )
             }
 
-            // ── Настройки / смена темы ────────────────────────────────────────
             composable("settings") {
                 SettingsScreen(
                     currentThemeId  = currentThemeId,
                     currentFontSize = currentFontSize,
+                    currentMode     = currentMode,    // ПЕРЕДАЧА СТЕЙТА
                     onThemeSelect   = { currentThemeId = it },
                     onFontSelect    = { currentFontSize = it },
+                    onModeSelect    = { currentMode = it }, // CALLBACK
                     onBack          = { navController.popBackStack() },
                 )
             }
