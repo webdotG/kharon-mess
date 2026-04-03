@@ -22,6 +22,10 @@ function isValidPayload(payload) {
     && /^[A-Za-z0-9+/]+=*$/.test(payload)
 }
 
+function isValidMsgId(id) {
+  return typeof id === 'string' && id.length >= 8 && id.length <= 64
+}
+
 class Hub {
   constructor() {
     this.clients       = new Map()
@@ -33,7 +37,7 @@ class Hub {
     this._statsTimer = setInterval(() => this._logStats(), 5 * 60 * 1000)
   }
 
-register(pubKey, ws, ip, mode = 'LIVE') {
+  register(pubKey, ws, ip, mode = 'LIVE') {
     if (!isValidPubKey(pubKey)) return { ok: false, reason: 'invalid_pubKey' }
 
     const ipCount = this.ipConnections.get(ip) ?? 0
@@ -55,8 +59,8 @@ register(pubKey, ws, ip, mode = 'LIVE') {
     }
 
     ws._remoteIp = ip
-    ws._receptionMode = mode // режим прямо в объекте сокета
-    
+    ws._receptionMode = mode
+
     this.clients.set(pubKey, ws)
     this.ipConnections.set(ip, ipCount + 1)
     console.log(`[hub] connect  peers=${this.clients.size} mode=${mode}`)
@@ -76,10 +80,7 @@ register(pubKey, ws, ip, mode = 'LIVE') {
     if (!isValidPayload(payload)) return { ok: false, reason: 'invalid_payload' }
     if (fromKey === toKey)        return { ok: false, reason: 'self_send' }
 
-    const msgId = (typeof id === 'string' && id.length > 0 && id.length < 64)
-      ? id
-      : this._generateId()
-
+    const msgId = isValidMsgId(id) ? id : this._generateId()
     const envelope = { type: 'msg', from: fromKey, payload, id: msgId }
     const recipientWs = this.clients.get(toKey)
 
@@ -93,6 +94,38 @@ register(pubKey, ws, ip, mode = 'LIVE') {
     return { ok: true, id: msgId }
   }
 
+  cancel(fromKey, toKey, msgId) {
+    if (!isValidPubKey(toKey))  return { ok: false, reason: 'invalid_recipient' }
+    if (!isValidMsgId(msgId))   return { ok: false, reason: 'invalid_msgId' }
+
+    const queue = this.queues.get(toKey)
+    if (!queue || queue.length === 0) return { ok: false, reason: 'not_in_queue' }
+
+    const before   = queue.length
+    const filtered = queue.filter(m => !(m.id === msgId && m.from === fromKey))
+    if (filtered.length === before) return { ok: false, reason: 'msg_not_found' }
+
+    filtered.length ? this.queues.set(toKey, filtered) : this.queues.delete(toKey)
+    console.log(`[hub] cancel  msgId=${msgId.substring(0, 8)}...`)
+    return { ok: true }
+  }
+
+  sendReadReceipt(readerKey, senderKey, msgId) {
+    if (!isValidPubKey(senderKey)) return { ok: false, reason: 'invalid_sender' }
+    if (!isValidMsgId(msgId))      return { ok: false, reason: 'invalid_msgId' }
+
+    const receipt  = { type: 'read_receipt', msgId, from: readerKey }
+    const senderWs = this.clients.get(senderKey)
+
+    if (senderWs && senderWs.readyState === 1) {
+      this._send(senderWs, receipt)
+      this.stats.delivered++
+    } else {
+      this._enqueue(senderKey, { ...receipt, id: this._generateId() })
+    }
+    return { ok: true }
+  }
+
   _enqueue(pubKey, envelope) {
     if (!this.queues.has(pubKey)) this.queues.set(pubKey, [])
     const queue = this.queues.get(pubKey)
@@ -102,9 +135,8 @@ register(pubKey, ws, ip, mode = 'LIVE') {
 
   _flushQueue(pubKey, ws) {
     const queue = this.queues.get(pubKey)
-    const mode = ws._receptionMode || 'LIVE'
+    const mode  = ws._receptionMode || 'LIVE'
 
-    // очередь есть — выгружаем
     if (queue && queue.length > 0) {
       const now = Date.now()
       for (const msg of queue) {
@@ -116,12 +148,11 @@ register(pubKey, ws, ip, mode = 'LIVE') {
       this.queues.delete(pubKey)
     }
 
-    // всегда шлем queue_end после очистки очереди
     if (mode !== 'LIVE') {
       setTimeout(() => {
         this._send(ws, { type: 'queue_end' })
-        console.log(`[hub] queue_end sent to ${pubKey.substring(0,8)}...`)
-      }, 100) // чтобы сообщения успели улететь
+        console.log(`[hub] queue_end sent to ${pubKey.substring(0, 8)}...`)
+      }, 100)
     }
   }
 
@@ -162,11 +193,8 @@ register(pubKey, ws, ip, mode = 'LIVE') {
   terminateAll() {
     clearInterval(this._sweepTimer)
     clearInterval(this._statsTimer)
-    for (const [pubKey, ws] of this.clients) {
-      try {
-        ws.close(1001, 'server_shutdown')
-        ws.terminate() 
-      } catch (e) {}
+    for (const ws of this.clients.values()) {
+      try { ws.close(1001, 'server_shutdown'); ws.terminate() } catch {}
     }
     this.clients.clear()
     this.queues.clear()

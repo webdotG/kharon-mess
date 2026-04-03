@@ -49,7 +49,7 @@ const interval = setInterval(() => {
 wss.on('connection', (ws, req) => {
   const ip = req.headers['x-real-ip'] || req.socket.remoteAddress || 'unknown'
   ws._remoteIp = ip
-  ws.isAlive = true
+  ws.isAlive   = true
   ws.on('pong', () => { ws.isAlive = true })
 
   let clientKey  = null
@@ -78,10 +78,10 @@ wss.on('connection', (ws, req) => {
 
     let msg
     try { msg = JSON.parse(raw) }
-    catch { 
+    catch {
       console.warn(`[SECURITY] invalid_json ip=${ip}`)
       send(ws, { type: 'error', message: 'invalid_json' })
-      return 
+      return
     }
 
     if (typeof msg !== 'object' || typeof msg.type !== 'string') {
@@ -89,13 +89,16 @@ wss.on('connection', (ws, req) => {
       return
     }
 
+    // Все кейсы кроме hello требуют идентификации
+    if (msg.type !== 'hello' && !identified) {
+      send(ws, { type: 'error', message: 'not_identified' })
+      return
+    }
+
     switch (msg.type) {
-      case 'hello':
+      case 'hello': {
         if (identified) { send(ws, { type: 'error', message: 'already_identified' }); return }
-        
-        // msg.reception_mode в регистрацию
         const result = hub.register(msg.pubKey, ws, ip, msg.reception_mode)
-        
         if (!result.ok) {
           console.warn(`[SECURITY] reg_failed reason=${result.reason} ip=${ip}`)
           send(ws, { type: 'error', message: result.reason })
@@ -105,21 +108,29 @@ wss.on('connection', (ws, req) => {
         clientKey  = msg.pubKey
         identified = true
         clearTimeout(helloTimeout)
-        
-        // о режиме в welcome
-        send(ws, { 
-          type: 'welcome', 
-          peersOnline: hub.clients.size,
-          mode: msg.reception_mode || 'LIVE' 
-        })
+        send(ws, { type: 'welcome', peersOnline: hub.clients.size, mode: msg.reception_mode || 'LIVE' })
         break
+      }
 
-      case 'msg':
-        if (!identified) { send(ws, { type: 'error', message: 'not_identified' }); return }
-        const resRoute = hub.route(clientKey, msg.to, msg.payload, msg.id)
-        if (!resRoute.ok) { send(ws, { type: 'error', message: resRoute.reason }); return }
-        send(ws, { type: 'ack', id: resRoute.id })
+      case 'msg': {
+        const result = hub.route(clientKey, msg.to, msg.payload, msg.id)
+        if (!result.ok) { send(ws, { type: 'error', message: result.reason }); return }
+        send(ws, { type: 'ack', id: result.id })
         break
+      }
+
+      case 'cancel': {
+        const result = hub.cancel(clientKey, msg.to, msg.msgId)
+        if (!result.ok) { send(ws, { type: 'error', message: result.reason }); return }
+        send(ws, { type: 'cancelled', msgId: msg.msgId })
+        break
+      }
+
+      case 'read': {
+        const result = hub.sendReadReceipt(clientKey, msg.to, msg.msgId)
+        if (!result.ok) { send(ws, { type: 'error', message: result.reason }); return }
+        break
+      }
 
       case 'ping':
         send(ws, { type: 'pong' })

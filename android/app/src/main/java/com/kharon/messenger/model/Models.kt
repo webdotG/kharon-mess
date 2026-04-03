@@ -15,7 +15,7 @@ data class ChatMessage(
     val status:     MessageStatus = MessageStatus.SENT,
 )
 
-enum class MessageStatus { SENDING, SENT, DELIVERED, FAILED }
+enum class MessageStatus { SENDING, SENT, DELIVERED, READ, FAILED }
 
 data class Contact(
     val pubKey:   String,

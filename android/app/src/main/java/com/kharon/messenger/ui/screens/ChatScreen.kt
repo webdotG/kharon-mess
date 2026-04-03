@@ -208,10 +208,11 @@ private fun MessageBubble(
                         if (isOut) {
                             Text(
                                 text = when (msg.status) {
-                                    MessageStatus.SENDING -> "~"
-                                    MessageStatus.SENT -> "+"
+                                    MessageStatus.SENDING   -> "~"
+                                    MessageStatus.SENT      -> "+"
                                     MessageStatus.DELIVERED -> "++"
-                                    MessageStatus.FAILED -> "!"
+                                    MessageStatus.READ      -> "vv"
+                                    MessageStatus.FAILED    -> "!"
                                 },
                                 color = if(msg.status == MessageStatus.DELIVERED) colors.primary else colors.subtle,
                                 fontSize = 14.sp,
@@ -290,3 +291,4 @@ private fun InputBar(
         )
     }
 }
+

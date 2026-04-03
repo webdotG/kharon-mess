@@ -45,7 +45,7 @@ class KharonForegroundService : Service() {
 
     private fun startSocket() {
         val keyPair = crypto.getOrCreateKeyPair()
-        socket.connect(keyPair.publicKey, keyPair.secretKey, currentMode)
+        socket.connect(keyPair.publicKey, currentMode)
 
         scope.launch {
             socket.state.collect { state ->
