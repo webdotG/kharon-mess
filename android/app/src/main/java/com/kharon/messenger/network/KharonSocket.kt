@@ -40,8 +40,7 @@ class KharonSocket @Inject constructor(
     private val seenIds          = Collections.synchronizedSet(LinkedHashSet<String>())
     private val pendingByContact = java.util.concurrent.ConcurrentHashMap<String, ArrayDeque<SocketEvent.Message>>()
     private val activeChats      = Collections.synchronizedSet(mutableSetOf<String>())
-    private val _pendingCount = MutableStateFlow(0)
-    val pendingCount: StateFlow<Int> = _pendingCount.asStateFlow()
+
     private val scope            = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val socketRef        = AtomicReference<WebSocket?>(null)
     private val isShutdown       = AtomicBoolean(false)
@@ -51,6 +50,17 @@ class KharonSocket @Inject constructor(
     private var currentMode = ReceptionMode.LIVE
 
     @Volatile private var backoffMs = 1_000L
+
+    private val _pendingCount = MutableStateFlow(0)
+    val pendingCount: StateFlow<Int> = _pendingCount.asStateFlow()
+    private val _unreadByContact = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val _unreadTotal = MutableStateFlow(0)
+    val unreadTotal: StateFlow<Int> = _unreadTotal.asStateFlow()
+    fun getUnreadCount(pubKey: String): Int = _unreadByContact[pubKey] ?: 0
+    fun clearUnread(pubKey: String) {
+        val was = _unreadByContact.remove(pubKey) ?: 0
+        _unreadTotal.update { (it - was).coerceAtLeast(0) }
+    }
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -63,6 +73,8 @@ class KharonSocket @Inject constructor(
                 .build()
         )
         .build()
+
+
 
     private val _state  = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val state: StateFlow<ConnectionState> = _state.asStateFlow()
@@ -154,6 +166,10 @@ class KharonSocket @Inject constructor(
                     val event = SocketEvent.Message(
                         IncomingMessage(id, from, result.plaintext, System.currentTimeMillis())
                     )
+                    // Считаем непрочитанные ВСЕГДА — и когда чат открыт и когда закрыт
+                    _unreadByContact[from] = (_unreadByContact[from] ?: 0) + 1
+                    _unreadTotal.update { it + 1 }
+
                     if (activeChats.contains(from)) {
                         emit(event)
                     } else {
@@ -199,8 +215,25 @@ class KharonSocket @Inject constructor(
         scope.launch { _events.emit(event) }
     }
 
+    fun ensureConnected(pubKey: String) {
+        if (_state.value is ConnectionState.Connected ||
+            _state.value is ConnectionState.Connecting) return
+        KLog.socket("ensureConnected — reconnecting for chat")
+        connect(pubKey, ReceptionMode.LIVE)
+    }
+
     fun resetPendingCount() {
         _pendingCount.value = 0
+    }
+
+    fun getTotalPendingCount(): Int {
+        return pendingByContact.values.sumOf { it.size }
+    }
+
+    fun clearPendingForContact(pubKey: String) {
+        val count = pendingByContact.remove(pubKey)?.size ?: 0
+        _pendingCount.update { (it - count).coerceAtLeast(0) }
+        KLog.socket("clearPending for ${pubKey.take(8)}... removed=$count")
     }
 
     fun getPendingCountForContact(pubKey: String): Int {
@@ -262,6 +295,7 @@ class KharonSocket @Inject constructor(
     fun registerChat(contactPubKey: String): List<SocketEvent.Message> {
         activeChats.add(contactPubKey)
         val pending = pendingByContact.remove(contactPubKey)?.toList() ?: emptyList()
+        clearUnread(contactPubKey) // сбрасываем счётчик когда открываем чат
         KLog.socket("registerChat ${contactPubKey.take(8)}... pending=${pending.size}")
         return pending
     }

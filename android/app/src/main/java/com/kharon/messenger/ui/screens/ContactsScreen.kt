@@ -48,7 +48,7 @@ fun ContactsScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "KHARON_OS v2.0",
+                text = "KHARON-MESS v2.0",
                 color = colors.primary,
                 fontSize = 18.sp,
                 fontFamily = theme.typography.fontFamily,
@@ -70,7 +70,7 @@ fun ContactsScreen(
                 else -> colors.offline
             }
             Text(
-                text = "NET: ${if (state.connection is ConnectionState.Connected) "ONLINE" else "OFFLINE"}",
+                text = "SERVER: ${if (state.connection is ConnectionState.Connected) "ONLINE" else "OFFLINE"}",
                 color = statusColor,
                 fontSize = 14.sp,
                 fontFamily = theme.typography.fontFamily

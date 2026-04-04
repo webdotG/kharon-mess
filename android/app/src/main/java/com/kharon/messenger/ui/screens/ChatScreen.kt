@@ -31,6 +31,8 @@ import java.util.*
 fun ChatScreen(
     contactName:   String,
     contactPubKey: String = "",
+    onChatClose:   () -> Unit = {},
+    onBack:        () -> Unit = {},
     viewModel:     ChatViewModel = hiltViewModel(),
 ) {
     val state     by viewModel.uiState.collectAsState()
@@ -38,18 +40,20 @@ fun ChatScreen(
     val colors     = theme.colors
     val listState  = rememberLazyListState()
 
+    DisposableEffect(Unit) {
+        onDispose { onChatClose() }
+    }
+
     LaunchedEffect(contactPubKey) {
         viewModel.init(contactPubKey)
     }
 
-    // Автоскролл к новым сообщениям
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
-            listState.animateScrollToItem(state.messages.lastIndex)
+            listState.scrollToItem(state.messages.lastIndex)
         }
     }
 
-    // READ: помечаем видимые входящие сообщения как прочитанные
     LaunchedEffect(listState.firstVisibleItemIndex, state.messages.size) {
         val visibleInfo = listState.layoutInfo.visibleItemsInfo
         val messages    = state.messages
@@ -71,9 +75,10 @@ fun ChatScreen(
         TitleBar(
             title       = contactName,
             connection  = state.connection,
-            contactMode = state.contactMode,  // режим собеседника
+            contactMode = state.contactMode,
             credits     = state.credits,
             theme       = theme,
+            onBack      = onBack,
         )
 
         LazyColumn(
@@ -84,10 +89,10 @@ fun ChatScreen(
         ) {
             items(state.messages, key = { it.id }) { msg ->
                 MessageBubble(
-                    msg          = msg,
-                    contactName  = contactName,
-                    theme        = theme,
-                    onCancel     = {
+                    msg         = msg,
+                    contactName = contactName,
+                    theme       = theme,
+                    onCancel    = {
                         if (msg.status == MessageStatus.SENT) {
                             viewModel.cancelMessage(msg.id)
                         }
@@ -114,6 +119,7 @@ private fun TitleBar(
     contactMode: ReceptionMode,
     credits:     Int,
     theme:       KharonTheme,
+    onBack:      () -> Unit = {},
 ) {
     val colors = theme.colors
 
@@ -125,7 +131,7 @@ private fun TitleBar(
     }
 
     val contactModeText = when {
-        contactMode == ReceptionMode.LIVE   -> "всегда на связи"
+        contactMode == ReceptionMode.LIVE   -> "онлайн"
         contactMode == ReceptionMode.SILENT -> "в тишине"
         contactMode.minutes < 60            -> "окно раз в ${contactMode.minutes} мин"
         contactMode.minutes < 1440          -> "окно раз в ${contactMode.minutes / 60} ч"
@@ -143,13 +149,22 @@ private fun TitleBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment     = Alignment.CenterVertically,
         ) {
-            Text(
-                text       = "> $title",
-                color      = colors.titleBarText,
-                fontSize   = 18.sp,
-                fontFamily = theme.typography.fontFamily,
-                fontWeight = FontWeight.Bold,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text       = "← ",
+                    color      = colors.titleBarText,
+                    fontSize   = 22.sp,
+                    fontFamily = theme.typography.fontFamily,
+                    modifier   = Modifier.clickable { onBack() }
+                )
+                Text(
+                    text       = "> $title",
+                    color      = colors.titleBarText,
+                    fontSize   = 18.sp,
+                    fontFamily = theme.typography.fontFamily,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
             Text(
                 text       = statusText,
                 color      = statusColor,
@@ -163,13 +178,13 @@ private fun TitleBar(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text       = "Абонент: $contactModeText",
+                text       = "Собеседник: $contactModeText",
                 color      = colors.subtle,
                 fontSize   = 11.sp,
                 fontFamily = theme.typography.fontFamily,
             )
             Text(
-                text       = "Тебе столько можно отправить: $credits/10",
+                text       = "Токенов можно использовать: $credits/10",
                 color      = if (credits <= 2) colors.offline else colors.subtle,
                 fontSize   = 11.sp,
                 fontFamily = theme.typography.fontFamily,
@@ -194,8 +209,6 @@ private fun MessageBubble(
         horizontalArrangement = if (isOut) Arrangement.End else Arrangement.Start,
     ) {
         Column(modifier = Modifier.widthIn(max = 300.dp)) {
-
-            // Метка отправителя
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text       = if (isOut) "вы" else contactName,
@@ -203,7 +216,6 @@ private fun MessageBubble(
                     fontSize   = 11.sp,
                     fontFamily = theme.typography.fontFamily,
                 )
-                // Кнопка отмены только для SENT (в очереди)
                 if (isOut && msg.status == MessageStatus.SENT) {
                     Text(
                         text       = "  [отменить X]",
@@ -214,7 +226,6 @@ private fun MessageBubble(
                     )
                 }
             }
-
             Box(
                 modifier = Modifier
                     .background(if (isOut) colors.msgOut else colors.msgIn)
@@ -241,15 +252,15 @@ private fun MessageBubble(
                         if (isOut) {
                             val (icon, color) = when (msg.status) {
                                 MessageStatus.SENDING   -> "..."  to colors.subtle
-                                MessageStatus.SENT      -> "v"    to colors.subtle
-                                MessageStatus.DELIVERED -> "v"    to colors.primary
-                                MessageStatus.READ      -> "vv"   to colors.online
-                                MessageStatus.FAILED    -> "!"    to colors.offline
+                                MessageStatus.SENT      -> "|||"    to colors.subtle
+                                MessageStatus.DELIVERED -> "=>>>"    to colors.primary
+                                MessageStatus.READ      -> "(^-^)"   to colors.online
+                                MessageStatus.FAILED    -> "!!!"    to colors.offline
                             }
                             Text(
                                 text       = icon,
                                 color      = color,
-                                fontSize   = 12.sp,
+                                fontSize   = 13.sp,
                                 fontFamily = theme.typography.fontFamily,
                                 fontWeight = FontWeight.Bold,
                             )
@@ -270,8 +281,8 @@ private fun InputBar(
     onSend:        () -> Unit,
     theme:         KharonTheme,
 ) {
-    val colors     = theme.colors
-    val canSend    = text.isNotBlank() && credits > 0
+    val colors  = theme.colors
+    val canSend = text.isNotBlank() && credits > 0
 
     Column(
         modifier = Modifier
@@ -279,7 +290,6 @@ private fun InputBar(
             .background(colors.surface)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        // Таймер следующей очистки
         if (nextCleanupMs > 0) {
             val remaining = ((nextCleanupMs - System.currentTimeMillis()) / 1000).coerceAtLeast(0)
             val mins      = remaining / 60
@@ -292,7 +302,6 @@ private fun InputBar(
                 modifier   = Modifier.padding(bottom = 2.dp),
             )
         }
-
         Row(
             modifier          = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -323,7 +332,6 @@ private fun InputBar(
                     inner()
                 }
             )
-
             Text(
                 text       = "  [>]",
                 color      = if (canSend) colors.primary else colors.subtle,

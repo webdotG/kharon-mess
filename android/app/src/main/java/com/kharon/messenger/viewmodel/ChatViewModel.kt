@@ -52,7 +52,9 @@ class ChatViewModel @Inject constructor(
 
         _uiState.update { it.copy(myPubKey = crypto.getOrCreateKeyPair().publicKey) }
 
-        // Загружаем режим контакта из БД
+        val myPubKey = crypto.getOrCreateKeyPair().publicKey
+        socket.ensureConnected(myPubKey)
+
         viewModelScope.launch {
             val entity = contactDao.getByPubKey(pubKey)
             val mode = entity?.receptionMode?.let {
@@ -61,7 +63,6 @@ class ChatViewModel @Inject constructor(
             _uiState.update { it.copy(contactMode = mode) }
         }
 
-        // Забираем буфер из KharonSocket
         val buffered = socket.registerChat(pubKey)
         KLog.vm("init: buffered=${buffered.size} messages")
         if (buffered.isNotEmpty()) {
@@ -92,7 +93,6 @@ class ChatViewModel @Inject constructor(
                         )
                         _uiState.update { it.copy(messages = it.messages + msg) }
                     }
-
                     is SocketEvent.ReadReceipt -> {
                         _uiState.update { state ->
                             state.copy(
@@ -104,13 +104,11 @@ class ChatViewModel @Inject constructor(
                             )
                         }
                     }
-
                     is SocketEvent.Cancelled -> {
                         _uiState.update { state ->
                             state.copy(messages = state.messages.filter { it.id != event.msgId })
                         }
                     }
-
                     is SocketEvent.ModeUpdate -> {
                         if (event.fromKey == contactPubKey) {
                             val mode = runCatching {
@@ -121,7 +119,6 @@ class ChatViewModel @Inject constructor(
                             contactDao.updateReceptionMode(event.fromKey, event.mode)
                         }
                     }
-
                     is SocketEvent.Welcome  -> {}
                     is SocketEvent.QueueEnd -> {}
                 }
@@ -140,15 +137,12 @@ class ChatViewModel @Inject constructor(
                 delay(5_000)
                 val now    = System.currentTimeMillis()
                 val cutoff = now - 120_000
-
                 val oldestRead = _uiState.value.messages
                     .filter { it.status == MessageStatus.READ }
                     .minByOrNull { it.readAt ?: it.timestamp }
-
                 val nextCleanup = if (oldestRead != null)
                     (oldestRead.readAt ?: oldestRead.timestamp) + 120_000
                 else 0L
-
                 _uiState.update { state ->
                     val filtered = state.messages.filter { msg ->
                         if (msg.status == MessageStatus.READ) {
@@ -197,10 +191,8 @@ class ChatViewModel @Inject constructor(
         val text = _uiState.value.inputText.trim()
         KLog.vm("sendMessage: text=${text.take(10)} contact=${contactPubKey.take(8)}... credits=${_uiState.value.credits}")
         if (text.isEmpty() || contactPubKey.isEmpty()) { KLog.err("sendMessage: empty text or contact"); return }
-
         val sentCount = _uiState.value.messages.count { it.isOutgoing && it.status == MessageStatus.SENT }
         if (sentCount >= 10) return
-
         val msgId = UUID.randomUUID().toString()
         val msg = ChatMessage(
             id         = msgId,
@@ -209,11 +201,9 @@ class ChatViewModel @Inject constructor(
             timestamp  = System.currentTimeMillis(),
             status     = MessageStatus.SENDING,
         )
-
         _uiState.update { state ->
             state.copy(messages = state.messages + msg, inputText = "")
         }
-
         viewModelScope.launch {
             val ok = socket.sendMessage(
                 recipientPubKey = contactPubKey,
@@ -236,6 +226,10 @@ class ChatViewModel @Inject constructor(
         super.onCleared()
         eventsJob?.cancel()
         ttlJob?.cancel()
-        if (contactPubKey.isNotEmpty()) socket.unregisterChat(contactPubKey)
+        if (contactPubKey.isNotEmpty()) {
+            socket.clearPendingForContact(contactPubKey)
+            socket.clearUnread(contactPubKey)  // сбрасываем счётчик
+            socket.unregisterChat(contactPubKey)
+        }
     }
 }

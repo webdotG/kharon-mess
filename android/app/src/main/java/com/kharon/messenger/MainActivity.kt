@@ -1,7 +1,10 @@
 package com.kharon.messenger
 
+import android.app.AlarmManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
@@ -10,7 +13,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
 import java.net.URLEncoder
 import java.net.URLDecoder
@@ -33,7 +35,6 @@ class MainActivity : ComponentActivity() {
 
     private fun requestBatteryOptimizationExemption() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
-        // Проверяем, не в белом ли мы списке уже
         if (!pm.isIgnoringBatteryOptimizations(packageName)) {
             val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                 data = Uri.parse("package:$packageName")
@@ -46,15 +47,36 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         requestBatteryOptimizationExemption()
-        
-        // Запрет скриншотов и показа в switcher задач
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
-        // Запускаем ForegroundService только при первом старте
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (!alarmManager.canScheduleExactAlarms()) {
+                try {
+                    startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                        data = Uri.parse("package:$packageName")
+                    })
+                } catch (e: Exception) { }
+            }
+        }
+
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         startKharonService()
 
         setContent {
-            KharonMessengerApp(onChatOpen = { pubKey -> socket.markChatActive(pubKey) })
+            KharonMessengerApp(
+                onChatOpen = { pubKey ->
+                    socket.markChatActive(pubKey)
+                    startService(Intent(this, KharonForegroundService::class.java).apply {
+                        action = KharonForegroundService.ACTION_CHAT_OPEN
+                    })
+                },
+                onChatClose = { mode ->
+                    startService(Intent(this, KharonForegroundService::class.java).apply {
+                        action = KharonForegroundService.ACTION_CHAT_CLOSE
+                        putExtra(KharonForegroundService.EXTRA_MODE, mode.name)
+                    })
+                }
+            )
         }
     }
 
@@ -68,37 +90,29 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // Останавливаем сервис только если приложение закрыто свайпом
         if (isFinishing) {
-            val intent = Intent(this, KharonForegroundService::class.java).apply {
+            startService(Intent(this, KharonForegroundService::class.java).apply {
                 action = KharonForegroundService.ACTION_STOP
-            }
-            startService(intent)
+            })
         }
     }
 }
 
-// ─── Корневой Composable ──────────────────────────────────────────────────────
-
 @Composable
-fun KharonMessengerApp(onChatOpen: (String) -> Unit = {}) {
+fun KharonMessengerApp(
+    onChatOpen:  (String) -> Unit = {},
+    onChatClose: (ReceptionMode) -> Unit = {},
+) {
     val navController = rememberNavController()
-
-    var currentThemeId  by remember { mutableStateOf(ThemeId.DEFAULT) }
-    
-    val currentTheme = remember(currentThemeId) { 
-        themeById(currentThemeId) 
-    }
-    
-    var currentMode     by remember { mutableStateOf<ReceptionMode>(ReceptionMode.LIVE) }
-
+    var currentThemeId by remember { mutableStateOf(ThemeId.DEFAULT) }
+    val currentTheme = remember(currentThemeId) { themeById(currentThemeId) }
+    var currentMode by remember { mutableStateOf<ReceptionMode>(ReceptionMode.LIVE) }
 
     KharonThemeProvider(theme = currentTheme) {
         NavHost(
             navController    = navController,
             startDestination = "contacts",
         ) {
-
             composable("contacts") {
                 ContactsScreen(
                     onContactClick  = { contact ->
@@ -126,23 +140,24 @@ fun KharonMessengerApp(onChatOpen: (String) -> Unit = {}) {
                 ChatScreen(
                     contactName   = name,
                     contactPubKey = URLDecoder.decode(rawKey, StandardCharsets.UTF_8.name()).replace(" ", "+"),
+                    onChatClose   = { onChatClose(currentMode) },
                 )
             }
 
             composable("add_contact") {
                 AddContactScreen(
-                    onBack      = { navController.popBackStack() },
-                    onAdded     = { navController.popBackStack() },
+                    onBack  = { navController.popBackStack() },
+                    onAdded = { navController.popBackStack() },
                 )
             }
 
             composable("settings") {
                 SettingsScreen(
-                    currentThemeId  = currentThemeId,
-                    currentMode     = currentMode,
-                    onThemeSelect   = { currentThemeId = it },
-                    onModeSelect    = { currentMode = it },
-                    onBack          = { navController.popBackStack() },
+                    currentThemeId = currentThemeId,
+                    currentMode    = currentMode,
+                    onThemeSelect  = { currentThemeId = it },
+                    onModeSelect   = { currentMode = it },
+                    onBack         = { navController.popBackStack() },
                 )
             }
         }

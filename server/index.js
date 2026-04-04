@@ -135,6 +135,7 @@ wss.on('connection', (ws, req) => {
       case 'mode_update': {
         const mode = msg.mode
         if (typeof mode !== 'string' || mode.length > 20) { return }
+        hub.updateMode(clientKey, mode)
         hub.broadcast(clientKey, { type: 'mode_update', from: clientKey, mode })
         break
       }

@@ -26,11 +26,19 @@ function isValidMsgId(id) {
   return typeof id === 'string' && id.length >= 8 && id.length <= 64
 }
 
+// Парсим режим в минуты
+function parseModeMinutes(mode) {
+  if (!mode || mode === 'LIVE' || mode === 'SILENT') return 0
+  const match = mode.match(/PULSE_(\d+)/)
+  return match ? parseInt(match[1]) : 0
+}
+
 class Hub {
   constructor() {
     this.clients       = new Map()
     this.queues        = new Map()
     this.ipConnections = new Map()
+    this.lastKnownMode = new Map() // pubKey -> minutes
     this.stats         = { delivered: 0, expired: 0, rejected: 0, blocked: 0 }
 
     this._sweepTimer = setInterval(() => this._sweep(), SWEEP_INTERVAL_MS)
@@ -60,6 +68,9 @@ class Hub {
 
     ws._remoteIp = ip
     ws._receptionMode = mode
+
+    // Запоминаем режим получателя
+    this.lastKnownMode.set(pubKey, parseModeMinutes(mode))
 
     this.clients.set(pubKey, ws)
     this.ipConnections.set(ip, ipCount + 1)
@@ -126,11 +137,21 @@ class Hub {
     return { ok: true }
   }
 
+  // Обновляем режим при mode_update от клиента
+  updateMode(pubKey, mode) {
+    this.lastKnownMode.set(pubKey, parseModeMinutes(mode))
+  }
+
   _enqueue(pubKey, envelope) {
     if (!this.queues.has(pubKey)) this.queues.set(pubKey, [])
     const queue = this.queues.get(pubKey)
     if (queue.length >= MAX_QUEUE) { this.stats.rejected++; return }
-    queue.push({ ...envelope, expiresAt: Date.now() + MSG_TTL_MS })
+
+    // TTL = базовый + интервал окна получателя
+    const recipientMinutes = this.lastKnownMode.get(pubKey) ?? 0
+    const ttl = MSG_TTL_MS + (recipientMinutes * 60 * 1000)
+    queue.push({ ...envelope, expiresAt: Date.now() + ttl })
+    console.log(`[hub] enqueue for ${pubKey.substring(0,8)}... ttl=${Math.round(ttl/1000)}s`)
   }
 
   _flushQueue(pubKey, ws) {

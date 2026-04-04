@@ -55,40 +55,33 @@ class ContactsViewModel @Inject constructor(
                 }
         }
 
+        // Слушаем события сокета — обновляем режим
         viewModelScope.launch {
             socket.events.collect { event ->
                 if (event is SocketEvent.ModeUpdate) {
                     KLog.vm("ModeUpdate from=${event.fromKey.take(8)}... mode=${event.mode}")
                     contactDao.updateReceptionMode(event.fromKey, event.mode)
                 }
-                // Обновляем счётчики непрочитанных
-                _uiState.update { state ->
-                    state.copy(
-                        contacts = state.contacts.map { contact ->
-                            contact.copy(
-                                unreadCount = socket.getPendingCountForContact(contact.pubKey)
+            }
+        }
+
+        // Обновляем счётчики через unreadTotal
+                viewModelScope.launch {
+                    socket.unreadTotal.collect {
+                        _uiState.update { state ->
+                            state.copy(
+                                contacts = state.contacts.map { contact ->
+                                    contact.copy(unreadCount = socket.getUnreadCount(contact.pubKey))
+                                }
                             )
                         }
-                    )
-                }
-            }
+                    }
         }
 
         // Слушаем состояние соединения
         viewModelScope.launch {
             socket.state.collect { state ->
                 _uiState.update { it.copy(connection = state) }
-            }
-        }
-
-        // Слушаем обновления режима от контактов
-        viewModelScope.launch {
-            socket.events.collect { event ->
-                if (event is SocketEvent.ModeUpdate) {
-                    KLog.vm("ModeUpdate from=${event.fromKey.take(8)}... mode=${event.mode}")
-                    // Сохраняем режим контакта в БД
-                    contactDao.updateReceptionMode(event.fromKey, event.mode)
-                }
             }
         }
     }
