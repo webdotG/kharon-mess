@@ -19,8 +19,10 @@ data class ChatMessage(
 enum class MessageStatus { SENDING, SENT, DELIVERED, READ, FAILED }
 
 data class Contact(
-    val pubKey:   String,
-    val name:     String,
-    val isOnline: Boolean = false,
-    val addedAt:  Long = System.currentTimeMillis(),
+    val pubKey:        String,
+    val name:          String,
+    val isOnline:      Boolean       = false,
+    val addedAt:       Long          = System.currentTimeMillis(),
+    val receptionMode: ReceptionMode = ReceptionMode.LIVE,
+    val unreadCount:   Int           = 0,
 )

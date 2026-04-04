@@ -12,6 +12,7 @@ import dagger.hilt.components.SingletonComponent
 import net.sqlcipher.database.SQLiteDatabase
 import net.sqlcipher.database.SupportFactory
 import javax.inject.Singleton
+import com.kharon.messenger.storage.MIGRATION_1_2
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -25,9 +26,8 @@ object AppModule {
 
         return Room.databaseBuilder(ctx, KharonDatabase::class.java, "kharon.db")
             .openHelperFactory(factory)
+            .addMigrations(MIGRATION_1_2)
             .fallbackToDestructiveMigration()
-            // Разрешаем запросы на main thread только при инициализации
-            // Room сам переносит операции в фон через dao suspend функции
             .allowMainThreadQueries()
             .build()
     }

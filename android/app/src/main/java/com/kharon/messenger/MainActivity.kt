@@ -126,7 +126,6 @@ fun KharonMessengerApp(onChatOpen: (String) -> Unit = {}) {
                 ChatScreen(
                     contactName   = name,
                     contactPubKey = URLDecoder.decode(rawKey, StandardCharsets.UTF_8.name()).replace(" ", "+"),
-                    currentMode   = currentMode
                 )
             }
 

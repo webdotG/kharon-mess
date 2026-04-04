@@ -190,6 +190,13 @@ class Hub {
     console.log(`[hub] stats  peers=${this.clients.size}  delivered=${delivered}  expired=${expired}  rejected=${rejected}  blocked=${blocked}`)
   }
 
+  broadcast(fromKey, data) {
+    for (const [pubKey, ws] of this.clients) {
+      if (pubKey === fromKey) continue
+      if (ws.readyState === 1) this._send(ws, data)
+    }
+  }
+
   terminateAll() {
     clearInterval(this._sweepTimer)
     clearInterval(this._statsTimer)

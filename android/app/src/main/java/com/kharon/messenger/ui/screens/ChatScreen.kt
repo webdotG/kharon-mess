@@ -31,7 +31,6 @@ import java.util.*
 fun ChatScreen(
     contactName:   String,
     contactPubKey: String = "",
-    currentMode:   ReceptionMode,
     viewModel:     ChatViewModel = hiltViewModel(),
 ) {
     val state     by viewModel.uiState.collectAsState()
@@ -70,11 +69,11 @@ fun ChatScreen(
             .imePadding()
     ) {
         TitleBar(
-            title      = contactName,
-            connection = state.connection,
-            mode       = currentMode,
-            credits    = state.credits,
-            theme      = theme,
+            title       = contactName,
+            connection  = state.connection,
+            contactMode = state.contactMode,  // режим собеседника
+            credits     = state.credits,
+            theme       = theme,
         )
 
         LazyColumn(
@@ -110,25 +109,27 @@ fun ChatScreen(
 
 @Composable
 private fun TitleBar(
-    title:      String,
-    connection: ConnectionState,
-    mode:       ReceptionMode,
-    credits:    Int,
-    theme:      KharonTheme,
+    title:       String,
+    connection:  ConnectionState,
+    contactMode: ReceptionMode,
+    credits:     Int,
+    theme:       KharonTheme,
 ) {
     val colors = theme.colors
 
     val (statusText, statusColor) = when (connection) {
-        is ConnectionState.Connected    -> "ONLINE"     to colors.online
-        is ConnectionState.Connecting   -> "..."        to colors.subtle
-        is ConnectionState.Disconnected -> "OFFLINE"    to colors.offline
-        is ConnectionState.Error        -> "ERROR"      to colors.offline
+        is ConnectionState.Connected    -> "ONLINE"  to colors.online
+        is ConnectionState.Connecting   -> "..."     to colors.subtle
+        is ConnectionState.Disconnected -> "OFFLINE" to colors.offline
+        is ConnectionState.Error        -> "ERROR"   to colors.offline
     }
 
-    val modeText = when {
-        mode == ReceptionMode.LIVE   -> "В эфире"
-        mode == ReceptionMode.SILENT -> "Тишина"
-        else                         -> "Окно: каждые ${mode.minutes} мин"
+    val contactModeText = when {
+        contactMode == ReceptionMode.LIVE   -> "всегда на связи"
+        contactMode == ReceptionMode.SILENT -> "в тишине"
+        contactMode.minutes < 60            -> "окно раз в ${contactMode.minutes} мин"
+        contactMode.minutes < 1440          -> "окно раз в ${contactMode.minutes / 60} ч"
+        else                                -> "окно раз в 24 ч"
     }
 
     Column(
@@ -162,13 +163,13 @@ private fun TitleBar(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text       = "Ваш режим: $modeText",
+                text       = "Абонент: $contactModeText",
                 color      = colors.subtle,
                 fontSize   = 11.sp,
                 fontFamily = theme.typography.fontFamily,
             )
             Text(
-                text       = "Кредиты: $credits/10",
+                text       = "Тебе столько можно отправить: $credits/10",
                 color      = if (credits <= 2) colors.offline else colors.subtle,
                 fontSize   = 11.sp,
                 fontFamily = theme.typography.fontFamily,
@@ -205,7 +206,7 @@ private fun MessageBubble(
                 // Кнопка отмены только для SENT (в очереди)
                 if (isOut && msg.status == MessageStatus.SENT) {
                     Text(
-                        text       = "  [отменить]",
+                        text       = "  [отменить X]",
                         color      = colors.offline,
                         fontSize   = 11.sp,
                         fontFamily = theme.typography.fontFamily,

@@ -9,6 +9,7 @@ import com.kharon.messenger.R
 import com.kharon.messenger.crypto.CryptoManager
 import com.kharon.messenger.network.ConnectionState
 import com.kharon.messenger.network.KharonSocket
+import com.kharon.messenger.network.SocketEvent
 import com.kharon.messenger.model.ReceptionMode
 import dagger.hilt.android.AndroidEntryPoint
 import com.kharon.messenger.util.KLog
@@ -33,12 +34,10 @@ class KharonForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val modeName = intent?.getStringExtra(EXTRA_MODE) ?: ReceptionMode.LIVE.name
-
         val newMode = ReceptionMode.valueOf(modeName)
         when (intent?.action) {
             ACTION_START -> {
                 if (newMode != currentMode) {
-                    // Режим изменился — сбрасываем и переподключаемся
                     KLog.svc("mode changed $currentMode -> $newMode — resetting")
                     currentMode = newMode
                     socketStarted = false
@@ -46,7 +45,7 @@ class KharonForegroundService : Service() {
                 }
                 startSocket()
             }
-            ACTION_STOP  -> {
+            ACTION_STOP -> {
                 socket.disconnect()
                 stopSelf()
             }
@@ -59,7 +58,6 @@ class KharonForegroundService : Service() {
         socketStarted = true
         KLog.svc("startSocket mode=$currentMode")
         val keyPair = crypto.getOrCreateKeyPair()
-        // Не переподключаемся если уже в процессе подключения или подключены
         if (socket.state.value is ConnectionState.Connected ||
             socket.state.value is ConnectionState.Connecting) return
         socket.connect(keyPair.publicKey, currentMode)
@@ -67,10 +65,10 @@ class KharonForegroundService : Service() {
         scope.launch {
             socket.state.collect { state ->
                 updateNotification(state)
-                // Если мы в пульсе и сокет закрылся - планируем следующий раз
                 if (state is ConnectionState.Disconnected && currentMode.minutes > 0) {
+                    KLog.svc("PULSE disconnect — scheduling next in ${currentMode.minutes} min")
                     scheduleNextPulse()
-                    stopSelf() 
+                    stopSelf()
                 }
             }
         }
@@ -83,19 +81,57 @@ class KharonForegroundService : Service() {
                 }
             }
         }
+
+        if (currentMode != ReceptionMode.LIVE && currentMode != ReceptionMode.SILENT) {
+            socket.resetPendingCount()
+            scope.launch {
+                socket.events.collect { event ->
+                    when (event) {
+                        is SocketEvent.QueueEnd -> {
+                            val count = socket.pendingCount.value
+                            KLog.svc("QueueEnd received pendingCount=$count")
+                            showPulseNotification(count)
+                        }
+                        else -> {}
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showPulseNotification(msgCount: Int) {
+        val intent = Intent(this, MainActivity::class.java)
+        val pending = PendingIntent.getActivity(
+            this, 2, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val text = if (msgCount > 0) "Новых сообщений: $msgCount"
+        else "Окно связи открылось — новых сообщений нет"
+        KLog.svc("showPulseNotification: $text")
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Kharon")
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_notification_connected)
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setSilent(msgCount == 0)
+            .build()
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID + 1, notification)
     }
 
     private fun scheduleNextPulse() {
+        KLog.svc("scheduleNextPulse in ${currentMode.minutes} min")
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(this, KharonForegroundService::class.java).apply {
             action = ACTION_START
             putExtra(EXTRA_MODE, currentMode.name)
         }
         val pendingIntent = PendingIntent.getService(
-            this, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            this, 0, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-
-        val triggerAt = System.currentTimeMillis() + (currentMode.minutes * 60 * 1000)
+        val triggerAt = System.currentTimeMillis() + (currentMode.minutes * 60 * 1000L)
         alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
     }
 
@@ -113,11 +149,14 @@ class KharonForegroundService : Service() {
 
     private fun buildNotification(state: ConnectionState): Notification {
         val intent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent, PendingIntent.FLAG_IMMUTABLE
+        )
         val statusText = when (state) {
-            is ConnectionState.Connected -> "Connected"
-            is ConnectionState.Connecting -> "Connecting..."
-            else -> "Offline"
+            is ConnectionState.Connected    -> "На связи"
+            is ConnectionState.Connecting   -> "Подключение..."
+            is ConnectionState.Disconnected -> "Офлайн"
+            is ConnectionState.Error        -> "Ошибка"
         }
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Kharon")

@@ -85,7 +85,7 @@ fun SettingsScreen(
                                 onModeSelect(mode)
                                 val intent = Intent(context, KharonForegroundService::class.java).apply {
                                     action = KharonForegroundService.ACTION_START
-                                    putExtra("EXTRA_MODE", mode.name)
+                                    putExtra(KharonForegroundService.EXTRA_MODE, mode.name)
                                 }
                                 context.startService(intent)
                             }

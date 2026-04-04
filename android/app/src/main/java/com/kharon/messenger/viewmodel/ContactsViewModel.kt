@@ -4,10 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kharon.messenger.crypto.CryptoManager
 import com.kharon.messenger.model.Contact
+import com.kharon.messenger.model.ReceptionMode
 import com.kharon.messenger.network.ConnectionState
 import com.kharon.messenger.network.KharonSocket
+import com.kharon.messenger.network.SocketEvent
 import com.kharon.messenger.storage.ContactDao
 import com.kharon.messenger.storage.ContactEntity
+import com.kharon.messenger.util.KLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -36,16 +39,56 @@ class ContactsViewModel @Inject constructor(
         // Слушаем контакты из БД
         viewModelScope.launch {
             contactDao.getAllFlow()
-                .map { list -> list.map { Contact(pubKey = it.pubKey, name = it.name) } }
+                .map { list ->
+                    list.map {
+                        Contact(
+                            pubKey        = it.pubKey,
+                            name          = it.name,
+                            receptionMode = runCatching {
+                                ReceptionMode.valueOf(it.receptionMode)
+                            }.getOrDefault(ReceptionMode.LIVE)
+                        )
+                    }
+                }
                 .collect { contacts ->
                     _uiState.update { it.copy(contacts = contacts) }
                 }
+        }
+
+        viewModelScope.launch {
+            socket.events.collect { event ->
+                if (event is SocketEvent.ModeUpdate) {
+                    KLog.vm("ModeUpdate from=${event.fromKey.take(8)}... mode=${event.mode}")
+                    contactDao.updateReceptionMode(event.fromKey, event.mode)
+                }
+                // Обновляем счётчики непрочитанных
+                _uiState.update { state ->
+                    state.copy(
+                        contacts = state.contacts.map { contact ->
+                            contact.copy(
+                                unreadCount = socket.getPendingCountForContact(contact.pubKey)
+                            )
+                        }
+                    )
+                }
+            }
         }
 
         // Слушаем состояние соединения
         viewModelScope.launch {
             socket.state.collect { state ->
                 _uiState.update { it.copy(connection = state) }
+            }
+        }
+
+        // Слушаем обновления режима от контактов
+        viewModelScope.launch {
+            socket.events.collect { event ->
+                if (event is SocketEvent.ModeUpdate) {
+                    KLog.vm("ModeUpdate from=${event.fromKey.take(8)}... mode=${event.mode}")
+                    // Сохраняем режим контакта в БД
+                    contactDao.updateReceptionMode(event.fromKey, event.mode)
+                }
             }
         }
     }

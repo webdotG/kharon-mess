@@ -132,6 +132,13 @@ wss.on('connection', (ws, req) => {
         break
       }
 
+      case 'mode_update': {
+        const mode = msg.mode
+        if (typeof mode !== 'string' || mode.length > 20) { return }
+        hub.broadcast(clientKey, { type: 'mode_update', from: clientKey, mode })
+        break
+      }
+
       case 'ping':
         send(ws, { type: 'pong' })
         break

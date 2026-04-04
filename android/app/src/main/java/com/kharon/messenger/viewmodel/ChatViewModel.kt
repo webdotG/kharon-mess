@@ -5,9 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.kharon.messenger.crypto.CryptoManager
 import com.kharon.messenger.model.ChatMessage
 import com.kharon.messenger.model.MessageStatus
+import com.kharon.messenger.model.ReceptionMode
 import com.kharon.messenger.network.ConnectionState
 import com.kharon.messenger.network.KharonSocket
 import com.kharon.messenger.network.SocketEvent
+import com.kharon.messenger.storage.ContactDao
 import com.kharon.messenger.util.KLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -26,12 +28,14 @@ data class ChatUiState(
     val myPubKey:      String            = "",
     val credits:       Int               = 10,
     val nextCleanupMs: Long              = 0L,
+    val contactMode:   ReceptionMode     = ReceptionMode.LIVE,
 )
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
-    private val socket: KharonSocket,
-    private val crypto: CryptoManager,
+    private val socket:     KharonSocket,
+    private val crypto:     CryptoManager,
+    private val contactDao: ContactDao,
 ) : ViewModel() {
 
     private var contactPubKey = ""
@@ -47,6 +51,15 @@ class ChatViewModel @Inject constructor(
         contactPubKey = pubKey
 
         _uiState.update { it.copy(myPubKey = crypto.getOrCreateKeyPair().publicKey) }
+
+        // Загружаем режим контакта из БД
+        viewModelScope.launch {
+            val entity = contactDao.getByPubKey(pubKey)
+            val mode = entity?.receptionMode?.let {
+                runCatching { ReceptionMode.valueOf(it) }.getOrDefault(ReceptionMode.LIVE)
+            } ?: ReceptionMode.LIVE
+            _uiState.update { it.copy(contactMode = mode) }
+        }
 
         // Забираем буфер из KharonSocket
         val buffered = socket.registerChat(pubKey)
@@ -98,7 +111,18 @@ class ChatViewModel @Inject constructor(
                         }
                     }
 
-                    is SocketEvent.Welcome -> {}
+                    is SocketEvent.ModeUpdate -> {
+                        if (event.fromKey == contactPubKey) {
+                            val mode = runCatching {
+                                ReceptionMode.valueOf(event.mode)
+                            }.getOrDefault(ReceptionMode.LIVE)
+                            KLog.vm("contactMode updated: $mode")
+                            _uiState.update { it.copy(contactMode = mode) }
+                            contactDao.updateReceptionMode(event.fromKey, event.mode)
+                        }
+                    }
+
+                    is SocketEvent.Welcome  -> {}
                     is SocketEvent.QueueEnd -> {}
                 }
             }
@@ -145,7 +169,6 @@ class ChatViewModel @Inject constructor(
     fun onMessageVisible(msgId: String, fromKey: String) {
         val msg = _uiState.value.messages.find { it.id == msgId } ?: return
         if (msg.isOutgoing || msg.status == MessageStatus.READ) return
-
         val readTime = System.currentTimeMillis()
         _uiState.update { state ->
             state.copy(

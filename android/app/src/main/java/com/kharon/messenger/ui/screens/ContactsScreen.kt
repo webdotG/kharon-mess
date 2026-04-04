@@ -169,22 +169,52 @@ private fun ContactRow(
                     fontFamily = theme.typography.fontFamily,
                     fontWeight = FontWeight.Bold,
                 )
-                Text(
-                    text = "ID: ${contact.pubKey.take(12)}...",
-                    color = colors.subtle,
-                    fontSize = 12.sp,
-                    fontFamily = theme.typography.fontFamily,
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "ID: ${contact.pubKey.take(12)}...",
+                        color = colors.subtle,
+                        fontSize = 12.sp,
+                        fontFamily = theme.typography.fontFamily,
+                    )
+                    val modeText = when {
+                        contact.receptionMode == ReceptionMode.LIVE   -> "всегда онлайн"
+                        contact.receptionMode == ReceptionMode.SILENT -> "тишина"
+                        contact.receptionMode.minutes < 60            -> "окно ${contact.receptionMode.minutes}м"
+                        else -> "окно ${contact.receptionMode.minutes / 60}ч"
+                    }
+                    Text(
+                        text = modeText,
+                        color = colors.subtle,
+                        fontSize = 11.sp,
+                        fontFamily = theme.typography.fontFamily,
+                    )
+                }
             }
         }
 
-        Text(
-            text = "[DELETE]",
-            color = colors.offline,
-            fontSize = 14.sp,
-            fontFamily = theme.typography.fontFamily,
-            modifier = Modifier.clickable { onDelete() },
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (contact.unreadCount > 0) {
+                Text(
+                    text = "[${contact.unreadCount}]",
+                    color = colors.online,
+                    fontSize = 14.sp,
+                    fontFamily = theme.typography.fontFamily,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Text(
+                text = "[удалить]",
+                color = colors.offline,
+                fontSize = 12.sp,
+                fontFamily = theme.typography.fontFamily,
+                modifier = Modifier.clickable { onDelete() },
+            )
+        }
     }
 }
-
