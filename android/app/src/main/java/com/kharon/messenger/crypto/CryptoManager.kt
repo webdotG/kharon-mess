@@ -59,12 +59,14 @@ class CryptoManager @Inject constructor(
             val nonce      = generateNonce()
             val recipient  = recipientPubKey.fromBase64()
             val secret     = mySecretKey.fromBase64()
+            android.util.Log.d("KHARON", "[CRYPTO] encrypt: recipientLen=${recipient.size} secretLen=${secret.size}")
             val ciphertext = ByteArray(message.size + BOX_MACBYTES)
             val ok = sodium.cryptoBoxEasy(ciphertext, message, message.size.toLong(), nonce, recipient, secret)
             if (!ok) return EncryptResult.Error("encryption failed")
             val payload = nonce + ciphertext
             EncryptResult.Success(payload.toBase64())
         } catch (e: Exception) {
+            android.util.Log.e("KHARON", "[CRYPTO] encrypt exception: ${e::class.simpleName}: ${e.message}")
             EncryptResult.Error(e.message ?: "unknown error")
         }
     }
@@ -84,6 +86,7 @@ class CryptoManager @Inject constructor(
             if (!ok) return DecryptResult.Error("decryption failed")
             DecryptResult.Success(String(plaintext, Charsets.UTF_8))
         } catch (e: Exception) {
+            android.util.Log.e("KHARON", "[CRYPTO] decrypt exception: ${e::class.simpleName}: ${e.message}")
             DecryptResult.Error(e.message ?: "unknown error")
         }
     }

@@ -26,7 +26,6 @@ fun ContactsScreen(
     onAddContact: () -> Unit,
     onSettingsClick: () -> Unit,
     currentMode: ReceptionMode,
-    userCredits: Int,
     viewModel: ContactsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -55,12 +54,7 @@ fun ContactsScreen(
                 fontFamily = theme.typography.fontFamily,
                 fontWeight = FontWeight.Bold
             )
-            Text(
-                text = "[$userCredits CR]",
-                color = colors.primary,
-                fontSize = 18.sp,
-                fontFamily = theme.typography.fontFamily
-            )
+
         }
 
         // --- Network Status Bar ---
@@ -193,3 +187,4 @@ private fun ContactRow(
         )
     }
 }
+

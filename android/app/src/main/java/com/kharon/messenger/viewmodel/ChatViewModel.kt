@@ -8,6 +8,7 @@ import com.kharon.messenger.model.MessageStatus
 import com.kharon.messenger.network.ConnectionState
 import com.kharon.messenger.network.KharonSocket
 import com.kharon.messenger.network.SocketEvent
+import com.kharon.messenger.util.KLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -19,11 +20,12 @@ import java.util.UUID
 import javax.inject.Inject
 
 data class ChatUiState(
-    val messages:   List<ChatMessage> = emptyList(),
-    val inputText:  String            = "",
-    val connection: ConnectionState   = ConnectionState.Disconnected,
-    val myPubKey:   String            = "",
-    val credits:    Int               = 10,
+    val messages:      List<ChatMessage> = emptyList(),
+    val inputText:     String            = "",
+    val connection:    ConnectionState   = ConnectionState.Disconnected,
+    val myPubKey:      String            = "",
+    val credits:       Int               = 10,
+    val nextCleanupMs: Long              = 0L,
 )
 
 @HiltViewModel
@@ -40,12 +42,28 @@ class ChatViewModel @Inject constructor(
     val uiState: StateFlow<ChatUiState> = _uiState
 
     fun init(pubKey: String) {
+        KLog.vm("init pubKey=${pubKey.take(8)}... current=${contactPubKey.take(8)}...")
         if (pubKey.isEmpty() || contactPubKey == pubKey) return
         contactPubKey = pubKey
 
         _uiState.update { it.copy(myPubKey = crypto.getOrCreateKeyPair().publicKey) }
 
-        // Один collect для всех событий
+        // Забираем буфер из KharonSocket
+        val buffered = socket.registerChat(pubKey)
+        KLog.vm("init: buffered=${buffered.size} messages")
+        if (buffered.isNotEmpty()) {
+            val bufferedMsgs = buffered.map { event ->
+                ChatMessage(
+                    id         = event.msg.id,
+                    text       = event.msg.plaintext,
+                    isOutgoing = false,
+                    timestamp  = event.msg.timestamp,
+                    status     = MessageStatus.DELIVERED,
+                )
+            }
+            _uiState.update { it.copy(messages = it.messages + bufferedMsgs) }
+        }
+
         eventsJob?.cancel()
         eventsJob = viewModelScope.launch {
             socket.events.collect { event ->
@@ -60,7 +78,6 @@ class ChatViewModel @Inject constructor(
                             status     = MessageStatus.DELIVERED,
                         )
                         _uiState.update { it.copy(messages = it.messages + msg) }
-                        scheduleTtlCleanup(event.msg.id)
                     }
 
                     is SocketEvent.ReadReceipt -> {
@@ -70,7 +87,6 @@ class ChatViewModel @Inject constructor(
                                     if (m.id == event.msgId) m.copy(status = MessageStatus.READ)
                                     else m
                                 },
-                                // Восстанавливаем кредиты когда получатель прочитал
                                 credits = 10
                             )
                         }
@@ -82,56 +98,71 @@ class ChatViewModel @Inject constructor(
                         }
                     }
 
-                    is SocketEvent.Welcome -> { /* handled by connection state */ }
-                    is SocketEvent.QueueEnd -> { /* handled by KharonSocket */ }
+                    is SocketEvent.Welcome -> {}
+                    is SocketEvent.QueueEnd -> {}
                 }
             }
         }
 
-        // Слушаем состояние соединения отдельно
         viewModelScope.launch {
             socket.state.collect { connState ->
                 _uiState.update { it.copy(connection = connState) }
             }
         }
 
-        // TTL sweep каждые 30 сек — удаляем сообщения старше 2 минут из UI
         ttlJob?.cancel()
         ttlJob = viewModelScope.launch {
             while (true) {
-                delay(30_000)
-                val cutoff = System.currentTimeMillis() - 120_000
+                delay(5_000)
+                val now    = System.currentTimeMillis()
+                val cutoff = now - 120_000
+
+                val oldestRead = _uiState.value.messages
+                    .filter { it.status == MessageStatus.READ }
+                    .minByOrNull { it.readAt ?: it.timestamp }
+
+                val nextCleanup = if (oldestRead != null)
+                    (oldestRead.readAt ?: oldestRead.timestamp) + 120_000
+                else 0L
+
                 _uiState.update { state ->
-                    state.copy(messages = state.messages.filter { it.timestamp > cutoff })
+                    val filtered = state.messages.filter { msg ->
+                        if (msg.status == MessageStatus.READ) {
+                            (msg.readAt ?: msg.timestamp) > cutoff
+                        } else true
+                    }
+                    val sentCount = filtered.count { it.isOutgoing && it.status == MessageStatus.SENT }
+                    state.copy(
+                        messages      = filtered,
+                        nextCleanupMs = nextCleanup,
+                        credits       = (10 - sentCount).coerceAtLeast(0),
+                    )
                 }
             }
         }
     }
 
-    // Помечаем сообщение как READ когда пользователь проскроллил его
     fun onMessageVisible(msgId: String, fromKey: String) {
         val msg = _uiState.value.messages.find { it.id == msgId } ?: return
         if (msg.isOutgoing || msg.status == MessageStatus.READ) return
 
+        val readTime = System.currentTimeMillis()
         _uiState.update { state ->
             state.copy(
                 messages = state.messages.map { m ->
-                    if (m.id == msgId) m.copy(status = MessageStatus.READ) else m
+                    if (m.id == msgId) m.copy(status = MessageStatus.READ, readAt = readTime) else m
                 }
             )
         }
-        // Уведомляем отправителя
         socket.sendRead(fromKey, msgId)
     }
 
     fun cancelMessage(msgId: String) {
         if (contactPubKey.isEmpty()) return
         socket.cancelMessage(contactPubKey, msgId)
-        // Оптимистично убираем из UI
         _uiState.update { state ->
             state.copy(messages = state.messages.filter { it.id != msgId })
         }
-        // Возвращаем кредит
         _uiState.update { it.copy(credits = (it.credits + 1).coerceAtMost(10)) }
     }
 
@@ -141,11 +172,11 @@ class ChatViewModel @Inject constructor(
 
     fun sendMessage() {
         val text = _uiState.value.inputText.trim()
-        if (text.isEmpty() || contactPubKey.isEmpty()) return
+        KLog.vm("sendMessage: text=${text.take(10)} contact=${contactPubKey.take(8)}... credits=${_uiState.value.credits}")
+        if (text.isEmpty() || contactPubKey.isEmpty()) { KLog.err("sendMessage: empty text or contact"); return }
 
-        val isOnline = _uiState.value.connection is ConnectionState.Connected
-        // Кредиты тратятся только если получатель офлайн
-        if (!isOnline && _uiState.value.credits <= 0) return
+        val sentCount = _uiState.value.messages.count { it.isOutgoing && it.status == MessageStatus.SENT }
+        if (sentCount >= 10) return
 
         val msgId = UUID.randomUUID().toString()
         val msg = ChatMessage(
@@ -157,14 +188,8 @@ class ChatViewModel @Inject constructor(
         )
 
         _uiState.update { state ->
-            state.copy(
-                messages  = state.messages + msg,
-                inputText = "",
-                credits   = if (!isOnline) (state.credits - 1).coerceAtLeast(0) else state.credits
-            )
+            state.copy(messages = state.messages + msg, inputText = "")
         }
-
-        scheduleTtlCleanup(msgId)
 
         viewModelScope.launch {
             val ok = socket.sendMessage(
@@ -172,6 +197,7 @@ class ChatViewModel @Inject constructor(
                 plaintext       = text,
                 messageId       = msgId,
             )
+            KLog.vm("sendMessage result: ok=$ok status=${if (ok) "SENT" else "FAILED"}")
             val newStatus = if (ok) MessageStatus.SENT else MessageStatus.FAILED
             _uiState.update { state ->
                 state.copy(
@@ -183,19 +209,10 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    // Планируем удаление конкретного сообщения через 2 минуты
-    private fun scheduleTtlCleanup(msgId: String) {
-        viewModelScope.launch {
-            delay(120_000)
-            _uiState.update { state ->
-                state.copy(messages = state.messages.filter { it.id != msgId })
-            }
-        }
-    }
-
     override fun onCleared() {
         super.onCleared()
         eventsJob?.cancel()
         ttlJob?.cancel()
+        if (contactPubKey.isNotEmpty()) socket.unregisterChat(contactPubKey)
     }
 }

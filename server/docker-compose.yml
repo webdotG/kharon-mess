@@ -31,6 +31,7 @@ services:
         limits:
           cpus: '2'
           memory: 512M
+          memswap: 512M
 
   nginx:
     image: nginx:alpine

@@ -13,6 +13,7 @@ data class ChatMessage(
     val isOutgoing: Boolean,
     val timestamp:  Long,
     val status:     MessageStatus = MessageStatus.SENT,
+    val readAt:     Long?         = null,
 )
 
 enum class MessageStatus { SENDING, SENT, DELIVERED, READ, FAILED }

@@ -11,6 +11,7 @@ import com.kharon.messenger.network.ConnectionState
 import com.kharon.messenger.network.KharonSocket
 import com.kharon.messenger.model.ReceptionMode
 import dagger.hilt.android.AndroidEntryPoint
+import com.kharon.messenger.util.KLog
 import kotlinx.coroutines.*
 import javax.inject.Inject
 
@@ -22,6 +23,7 @@ class KharonForegroundService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var currentMode = ReceptionMode.LIVE
+    private var socketStarted = false
 
     override fun onCreate() {
         super.onCreate()
@@ -31,10 +33,19 @@ class KharonForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val modeName = intent?.getStringExtra(EXTRA_MODE) ?: ReceptionMode.LIVE.name
-        currentMode = ReceptionMode.valueOf(modeName)
 
+        val newMode = ReceptionMode.valueOf(modeName)
         when (intent?.action) {
-            ACTION_START -> startSocket()
+            ACTION_START -> {
+                if (newMode != currentMode) {
+                    // Режим изменился — сбрасываем и переподключаемся
+                    KLog.svc("mode changed $currentMode -> $newMode — resetting")
+                    currentMode = newMode
+                    socketStarted = false
+                    socket.disconnect()
+                }
+                startSocket()
+            }
             ACTION_STOP  -> {
                 socket.disconnect()
                 stopSelf()
@@ -44,7 +55,13 @@ class KharonForegroundService : Service() {
     }
 
     private fun startSocket() {
+        if (socketStarted) { KLog.svc("startSocket already started — skip"); return }
+        socketStarted = true
+        KLog.svc("startSocket mode=$currentMode")
         val keyPair = crypto.getOrCreateKeyPair()
+        // Не переподключаемся если уже в процессе подключения или подключены
+        if (socket.state.value is ConnectionState.Connected ||
+            socket.state.value is ConnectionState.Connecting) return
         socket.connect(keyPair.publicKey, currentMode)
 
         scope.launch {

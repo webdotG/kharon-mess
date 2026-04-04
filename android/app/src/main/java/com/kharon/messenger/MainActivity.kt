@@ -28,6 +28,9 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    @javax.inject.Inject
+    lateinit var socket: com.kharon.messenger.network.KharonSocket
+
     private fun requestBatteryOptimizationExemption() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         // Проверяем, не в белом ли мы списке уже
@@ -47,17 +50,18 @@ class MainActivity : ComponentActivity() {
         // Запрет скриншотов и показа в switcher задач
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
-        // Запускаем ForegroundService — он держит WebSocket живым
-        startForegroundService()
+        // Запускаем ForegroundService только при первом старте
+        startKharonService()
 
         setContent {
-            KharonMessengerApp()
+            KharonMessengerApp(onChatOpen = { pubKey -> socket.markChatActive(pubKey) })
         }
     }
 
-    private fun startForegroundService() {
+    private fun startKharonService() {
         val intent = Intent(this, KharonForegroundService::class.java).apply {
             action = KharonForegroundService.ACTION_START
+            putExtra(KharonForegroundService.EXTRA_MODE, ReceptionMode.LIVE.name)
         }
         startForegroundService(intent)
     }
@@ -77,18 +81,16 @@ class MainActivity : ComponentActivity() {
 // ─── Корневой Composable ──────────────────────────────────────────────────────
 
 @Composable
-fun KharonMessengerApp() {
+fun KharonMessengerApp(onChatOpen: (String) -> Unit = {}) {
     val navController = rememberNavController()
 
     var currentThemeId  by remember { mutableStateOf(ThemeId.DEFAULT) }
     
-    // 2. ИСПРАВЛЕНО: Оставляем только один блок инициализации темы
     val currentTheme = remember(currentThemeId) { 
         themeById(currentThemeId) 
     }
     
     var currentMode     by remember { mutableStateOf<ReceptionMode>(ReceptionMode.LIVE) }
-    var userCredits     by remember { mutableStateOf(0) }
 
 
     KharonThemeProvider(theme = currentTheme) {
@@ -102,11 +104,11 @@ fun KharonMessengerApp() {
                     onContactClick  = { contact ->
                         val encodedKey  = URLEncoder.encode(contact.pubKey, StandardCharsets.UTF_8.name())
                         val encodedName = URLEncoder.encode(contact.name, StandardCharsets.UTF_8.name())
+                        onChatOpen(contact.pubKey)
                         navController.navigate("chat/$encodedKey/$encodedName")
                     },
                     onAddContact    = { navController.navigate("add_contact") },
                     onSettingsClick = { navController.navigate("settings") },
-                    userCredits     = userCredits,
                     currentMode     = currentMode
                 )
             }
@@ -123,8 +125,7 @@ fun KharonMessengerApp() {
                 val name    = URLDecoder.decode(rawName, StandardCharsets.UTF_8.name())
                 ChatScreen(
                     contactName   = name,
-                    contactPubKey = URLDecoder.decode(rawKey, StandardCharsets.UTF_8.name()),
-                    userCredits   = userCredits,
+                    contactPubKey = URLDecoder.decode(rawKey, StandardCharsets.UTF_8.name()).replace(" ", "+"),
                     currentMode   = currentMode
                 )
             }
@@ -133,7 +134,6 @@ fun KharonMessengerApp() {
                 AddContactScreen(
                     onBack      = { navController.popBackStack() },
                     onAdded     = { navController.popBackStack() },
-                    userCredits = userCredits
                 )
             }
 

@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.kharon.messenger.util.KLog
 
 // ─── Connection state ─────────────────────────────────────────────────────────
 
@@ -42,7 +43,9 @@ class KharonSocket @Inject constructor(
     private val config: SocketConfig,
 ) {
     // Thread-safe коллекция для дедупликации
-    private val seenIds = Collections.synchronizedSet(LinkedHashSet<String>())
+    private val seenIds          = Collections.synchronizedSet(LinkedHashSet<String>())
+    private val pendingByContact = java.util.concurrent.ConcurrentHashMap<String, ArrayDeque<SocketEvent.Message>>()
+    private val activeChats      = Collections.synchronizedSet(mutableSetOf<String>())
 
     // Scope живёт пока Singleton — отменяется только при terminateAll
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -83,6 +86,7 @@ class KharonSocket @Inject constructor(
 
     fun connect(pubKey: String, mode: ReceptionMode) {
         if (pubKey.isEmpty()) return
+        KLog.socket("connect pubKey=${pubKey.take(8)}... mode=$mode")
         myPubKey    = pubKey
         currentMode = mode
         isShutdown.set(false)
@@ -104,6 +108,7 @@ class KharonSocket @Inject constructor(
         val ws = client.newWebSocket(request, object : WebSocketListener() {
 
             override fun onOpen(ws: WebSocket, response: Response) {
+                KLog.socket("onOpen — sending hello")
                 socketRef.set(ws)
                 isConnecting.set(false)
                 backoffMs = 1_000L
@@ -120,12 +125,14 @@ class KharonSocket @Inject constructor(
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                KLog.socket("onClosed code=$code reason=$reason")
                 isConnecting.set(false)
                 _state.value = ConnectionState.Disconnected
                 if (!isShutdown.get()) scheduleReconnect()
             }
 
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                KLog.err("onFailure: ${t.message}")
                 isConnecting.set(false)
                 _state.value = ConnectionState.Error(t.message ?: "failed")
                 if (!isShutdown.get()) scheduleReconnect()
@@ -142,6 +149,7 @@ class KharonSocket @Inject constructor(
         when (type) {
             "welcome" -> {
                 val peers = json.optInt("peersOnline", 0)
+                KLog.socket("welcome peers=$peers")
                 _state.value = ConnectionState.Connected
                 emit(SocketEvent.Welcome(peers))
             }
@@ -166,9 +174,17 @@ class KharonSocket @Inject constructor(
                 val secKey = crypto.getOrCreateKeyPair().secretKey
                 val result = crypto.decrypt(payload, from, secKey)
                 if (result is DecryptResult.Success) {
-                    emit(SocketEvent.Message(
+                    KLog.socket("msg decrypted from=${from.take(8)}... active=${activeChats.contains(from)}")
+                    val event = SocketEvent.Message(
                         IncomingMessage(id, from, result.plaintext, System.currentTimeMillis())
-                    ))
+                    )
+                    if (activeChats.contains(from)) {
+                        emit(event)
+                    } else {
+                        val buf = pendingByContact.getOrPut(from) { ArrayDeque() }
+                        buf.addLast(event)
+                        if (buf.size > 50) buf.removeFirst()
+                    }
                 }
             }
 
@@ -210,12 +226,14 @@ class KharonSocket @Inject constructor(
         plaintext: String,
         messageId: String,
     ): Boolean {
-        val ws = socketRef.get() ?: return false
-        if (_state.value !is ConnectionState.Connected) return false
-        if (recipientPubKey.isEmpty() || plaintext.isEmpty()) return false
+        val ws = socketRef.get() ?: run { KLog.err("sendMessage: socket is null"); return false }
+        if (_state.value !is ConnectionState.Connected) { KLog.err("sendMessage: not connected state=${_state.value}"); return false }
+        if (recipientPubKey.isEmpty() || plaintext.isEmpty()) { KLog.err("sendMessage: empty params"); return false }
 
         val secKey    = crypto.getOrCreateKeyPair().secretKey
+        KLog.socket("encrypt to=${recipientPubKey.take(8)}... secKey=${secKey.take(8)}...")
         val encrypted = crypto.encrypt(plaintext, recipientPubKey, secKey)
+        KLog.socket("encrypt result: ${encrypted::class.simpleName}")
 
         return if (encrypted is com.kharon.messenger.crypto.EncryptResult.Success) {
             ws.send(JSONObject().apply {
@@ -244,6 +262,24 @@ class KharonSocket @Inject constructor(
             put("to",    recipientPubKey)
             put("msgId", msgId)
         }.toString())
+    }
+
+    // Вызывается из MainActivity ДО навигации — только помечает чат активным
+    fun markChatActive(contactPubKey: String) {
+        activeChats.add(contactPubKey)
+        KLog.socket("markChatActive ${contactPubKey.take(8)}...")
+    }
+
+    // Вызывается из ChatViewModel.init() — забирает буфер
+    fun registerChat(contactPubKey: String): List<SocketEvent.Message> {
+        activeChats.add(contactPubKey)
+        val pending = pendingByContact.remove(contactPubKey)?.toList() ?: emptyList()
+        KLog.socket("registerChat ${contactPubKey.take(8)}... pending=${pending.size}")
+        return pending
+}
+
+    fun unregisterChat(contactPubKey: String) {
+        activeChats.remove(contactPubKey)
     }
 
     fun ping() {

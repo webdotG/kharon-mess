@@ -32,7 +32,6 @@ import com.kharon.messenger.viewmodel.ContactsViewModel
 fun AddContactScreen(
     onBack: () -> Unit,
     onAdded: () -> Unit,
-    userCredits: Int,
     viewModel: ContactsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -83,7 +82,7 @@ fun AddContactScreen(
                 )
             }
             Text(
-                text = "[$userCredits CR]",
+                text = "[+]",
                 color = colors.primary,
                 fontSize = 18.sp,
                 fontFamily = theme.typography.fontFamily
