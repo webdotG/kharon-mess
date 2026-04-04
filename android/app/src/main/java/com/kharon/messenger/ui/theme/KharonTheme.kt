@@ -9,21 +9,13 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// ─── Размер шрифта ────────────────────────────────────────────────────────────
-
-enum class FontSize(val label: String, val icon: String, val body: TextUnit, val title: TextUnit, val caption: TextUnit) {
-    SMALL  ("Small",  "A",  13.sp, 14.sp, 11.sp),
-    MEDIUM ("Medium", "A+", 15.sp, 16.sp, 12.sp),
-    LARGE  ("Large",  "A++",17.sp, 18.sp, 14.sp),
-}
-
 // ─── Темы ─────────────────────────────────────────────────────────────────────
 
 enum class ThemeId(val icon: String) {
-    DEFAULT       (">_<"),
+    PRINCESS      ("♡"),
     TERMINAL_DARK (">_!"),
     TERMINAL_LIGHT("о_0"),
-    PRINCESS      ("♡"),
+    SHADOW        ("XXX"),
 }
 
 enum class BorderStyle { NONE, ROUNDED }
@@ -55,9 +47,9 @@ data class KharonColors(
 @Immutable
 data class KharonTypography(
     val fontFamily: FontFamily,
-    val bodySize: TextUnit   = 15.sp,
-    val titleSize: TextUnit  = 16.sp,
-    val captionSize: TextUnit= 12.sp,
+    val bodySize: TextUnit    = 15.sp,
+    val titleSize: TextUnit   = 16.sp,
+    val captionSize: TextUnit = 12.sp,
 )
 
 @Immutable
@@ -74,7 +66,7 @@ data class KharonDimensions(
     val messagePaddingV: Dp = 8.dp,
     val screenPadding: Dp   = 16.dp,
     val itemSpacing: Dp     = 8.dp,
-    val dividerChar: String = "─",  // тонкая линия
+    val dividerChar: String = "─",
 )
 
 @Immutable
@@ -97,36 +89,35 @@ data class KharonTheme(
 
 // ─── CompositionLocals ───────────────────────────────────────────────────────
 
-val LocalKharonTheme = staticCompositionLocalOf<KharonTheme> { DefaultTheme }
+val LocalKharonTheme = staticCompositionLocalOf<KharonTheme> { PrincessTheme }
 val LocalKharonUI    = LocalKharonTheme
-val LocalFontSize    = staticCompositionLocalOf<FontSize> { FontSize.MEDIUM }
 
-// ─── Default (тёмная) ────────────────────────────────────────────────────────
+// ─── Princess (DEFAULT) ───────────────────────────────────────────────────────
 
-val DefaultTheme = KharonTheme(
-    id          = ThemeId.DEFAULT,
-    displayName = "Default",
+val PrincessTheme = KharonTheme(
+    id          = ThemeId.PRINCESS,
+    displayName = "Princess",
     colors = KharonColors(
-        background     = Color(0xFF0F0F0F),
-        surface        = Color(0xFF1C1C1E),
-        surfaceVariant = Color(0xFF2C2C2E),
-        primary        = Color(0xFF0A84FF),
+        background     = Color(0xFFFFF0F5),
+        surface        = Color(0xFFFFE4F0),
+        surfaceVariant = Color(0xFFFFD6E8),
+        primary        = Color(0xFFD63384),
         onPrimary      = Color.White,
-        onBackground   = Color(0xFFFFFFFF),
-        onSurface      = Color(0xFFEEEEEE),
-        subtle         = Color(0xFF8E8E93),
-        divider        = Color(0xFF38383A),
-        msgOut         = Color(0xFF0A84FF),
-        msgIn          = Color(0xFF2C2C2E),
+        onBackground   = Color(0xFF4A1040),
+        onSurface      = Color(0xFF4A1040),
+        subtle         = Color(0xFFB07090),
+        divider        = Color(0xFFFFB3D9),
+        msgOut         = Color(0xFFD63384),
+        msgIn          = Color(0xFFFFE4F0),
         msgOutText     = Color.White,
-        msgInText      = Color(0xFFFFFFFF),
-        titleBar       = Color(0xFF1C1C1E),
+        msgInText      = Color(0xFF4A1040),
+        titleBar       = Color(0xFFFF69B4),
         titleBarText   = Color.White,
-        buttonFace     = Color(0xFF2C2C2E),
-        buttonHighlight= Color(0xFF48484A),
-        buttonShadow   = Color(0xFF000000),
-        online         = Color(0xFF34C759),
-        offline        = Color(0xFF8E8E93),
+        buttonFace     = Color(0xFFFFB3D9),
+        buttonHighlight= Color(0xFFFF69B4),
+        buttonShadow   = Color(0xFFD63384),
+        online         = Color(0xFF9B59B6),
+        offline        = Color(0xFFCCCCCC),
     ),
     typography = KharonTypography(
         fontFamily  = FontFamily.Default,
@@ -136,9 +127,9 @@ val DefaultTheme = KharonTheme(
     ),
     shapes = KharonShapes(
         borderStyle         = BorderStyle.ROUNDED,
-        messageBubbleRadius = 18.dp,
-        buttonRadius        = 10.dp,
-        cardRadius          = 12.dp,
+        messageBubbleRadius = 20.dp,
+        buttonRadius        = 20.dp,
+        cardRadius          = 16.dp,
     ),
     sounds = KharonSounds(null, null, null),
 )
@@ -219,33 +210,32 @@ val TerminalLightTheme = KharonTheme(
     sounds = KharonSounds(null, null, null),
 )
 
-// ─── Princess ─────────────────────────────────────────────────────────────────
-// Нежная тема: розово-фиолетово-голубые тона, котики и смайлики
+// ─── Shadow (чёрно-красно-белая) ─────────────────────────────────────────────
 
-val PrincessTheme = KharonTheme(
-    id          = ThemeId.PRINCESS,
-    displayName = "Princess",
+val ShadowTheme = KharonTheme(
+    id          = ThemeId.SHADOW,
+    displayName = "Shadow",
     colors = KharonColors(
-        background     = Color(0xFFFFF0F5),  // лавандовый румянец
-        surface        = Color(0xFFFFE4F0),
-        surfaceVariant = Color(0xFFFFD6E8),
-        primary        = Color(0xFFD63384),  // малиновый
+        background     = Color(0xFF0A0A0A),
+        surface        = Color(0xFF141414),
+        surfaceVariant = Color(0xFF1E1E1E),
+        primary        = Color(0xFFCC0000),
         onPrimary      = Color.White,
-        onBackground   = Color(0xFF4A1040),  // тёмно-фиолетовый
-        onSurface      = Color(0xFF4A1040),
-        subtle         = Color(0xFFB07090),
-        divider        = Color(0xFFFFB3D9),
-        msgOut         = Color(0xFFD63384),
-        msgIn          = Color(0xFFFFE4F0),
-        msgOutText     = Color.White,
-        msgInText      = Color(0xFF4A1040),
-        titleBar       = Color(0xFFFF69B4),  // горячий розовый
-        titleBarText   = Color.White,
-        buttonFace     = Color(0xFFFFB3D9),
-        buttonHighlight= Color(0xFFFF69B4),
-        buttonShadow   = Color(0xFFD63384),
-        online         = Color(0xFF9B59B6),  // фиолетовый
-        offline        = Color(0xFFCCCCCC),
+        onBackground   = Color(0xFFEEEEEE),
+        onSurface      = Color(0xFFEEEEEE),
+        subtle         = Color(0xFF666666),
+        divider        = Color(0xFF2A2A2A),
+        msgOut         = Color(0xFF8B0000),
+        msgIn          = Color(0xFF1E1E1E),
+        msgOutText     = Color(0xFFFFFFFF),
+        msgInText      = Color(0xFFEEEEEE),
+        titleBar       = Color(0xFF0A0A0A),
+        titleBarText   = Color(0xFFCC0000),
+        buttonFace     = Color(0xFF1E1E1E),
+        buttonHighlight= Color(0xFFCC0000),
+        buttonShadow   = Color(0xFF000000),
+        online         = Color(0xFFCC0000),
+        offline        = Color(0xFF444444),
     ),
     typography = KharonTypography(
         fontFamily  = FontFamily.Default,
@@ -255,20 +245,20 @@ val PrincessTheme = KharonTheme(
     ),
     shapes = KharonShapes(
         borderStyle         = BorderStyle.ROUNDED,
-        messageBubbleRadius = 20.dp,
-        buttonRadius        = 20.dp,
-        cardRadius          = 16.dp,
+        messageBubbleRadius = 4.dp,
+        buttonRadius        = 4.dp,
+        cardRadius          = 4.dp,
     ),
     sounds = KharonSounds(null, null, null),
 )
 
 // ─── Реестр ───────────────────────────────────────────────────────────────────
 
-val AllThemes get() = listOf(DefaultTheme, TerminalDarkTheme, TerminalLightTheme, PrincessTheme)
+val AllThemes get() = listOf(PrincessTheme, TerminalDarkTheme, TerminalLightTheme, ShadowTheme)
 
 fun themeById(id: ThemeId): KharonTheme = when (id) {
-    ThemeId.DEFAULT        -> DefaultTheme
+    ThemeId.PRINCESS       -> PrincessTheme
     ThemeId.TERMINAL_DARK  -> TerminalDarkTheme
     ThemeId.TERMINAL_LIGHT -> TerminalLightTheme
-    ThemeId.PRINCESS       -> PrincessTheme
+    ThemeId.SHADOW         -> ShadowTheme
 }

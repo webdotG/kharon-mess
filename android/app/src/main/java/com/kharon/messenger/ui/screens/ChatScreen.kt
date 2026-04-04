@@ -151,26 +151,30 @@ private fun TitleBar(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text       = "← ",
+                    text       = "←",
                     color      = colors.titleBarText,
-                    fontSize   = 22.sp,
+                    fontSize   = 28.sp,           // ← больше
                     fontFamily = theme.typography.fontFamily,
-                    modifier   = Modifier.clickable { onBack() }
+                    modifier   = Modifier
+                        .clickable { onBack() }
+                        .padding(end = 16.dp, top = 4.dp, bottom = 4.dp)  // ← отступы
                 )
                 Text(
                     text       = "> $title",
                     color      = colors.titleBarText,
-                    fontSize   = 18.sp,
+                    fontSize   = 21.sp,
                     fontFamily = theme.typography.fontFamily,
                     fontWeight = FontWeight.Bold,
                 )
             }
             Text(
-                text       = statusText,
+                text       = "при закрытии чата сообщения удаляются ",
                 color      = statusColor,
                 fontSize   = 13.sp,
                 fontFamily = theme.typography.fontFamily,
                 fontWeight = FontWeight.Bold,
+                modifier   = Modifier
+                    .padding(start = 25.dp, top = 8.dp, bottom = 8.dp)
             )
         }
         Row(
@@ -252,7 +256,7 @@ private fun MessageBubble(
                         if (isOut) {
                             val (icon, color) = when (msg.status) {
                                 MessageStatus.SENDING   -> "..."  to colors.subtle
-                                MessageStatus.SENT      -> "|||"    to colors.subtle
+                                MessageStatus.SENT      -> "-|_"    to colors.subtle
                                 MessageStatus.DELIVERED -> "=>>>"    to colors.primary
                                 MessageStatus.READ      -> "(^-^)"   to colors.online
                                 MessageStatus.FAILED    -> "!!!"    to colors.offline

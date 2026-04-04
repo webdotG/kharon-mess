@@ -104,7 +104,7 @@ fun KharonMessengerApp(
     onChatClose: (ReceptionMode) -> Unit = {},
 ) {
     val navController = rememberNavController()
-    var currentThemeId by remember { mutableStateOf(ThemeId.DEFAULT) }
+    var currentThemeId by remember { mutableStateOf(ThemeId.PRINCESS) }
     val currentTheme = remember(currentThemeId) { themeById(currentThemeId) }
     var currentMode by remember { mutableStateOf<ReceptionMode>(ReceptionMode.LIVE) }
 
@@ -141,6 +141,7 @@ fun KharonMessengerApp(
                     contactName   = name,
                     contactPubKey = URLDecoder.decode(rawKey, StandardCharsets.UTF_8.name()).replace(" ", "+"),
                     onChatClose   = { onChatClose(currentMode) },
+                    onBack        = { navController.popBackStack() },
                 )
             }
 

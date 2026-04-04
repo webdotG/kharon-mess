@@ -50,7 +50,7 @@ fun ContactsScreen(
             Text(
                 text = "KHARON-MESS v2.0",
                 color = colors.primary,
-                fontSize = 18.sp,
+                fontSize = 23.sp,
                 fontFamily = theme.typography.fontFamily,
                 fontWeight = FontWeight.Bold
             )
@@ -62,15 +62,16 @@ fun ContactsScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(colors.surface)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+
             val statusColor = when (state.connection) {
                 is ConnectionState.Connected -> colors.online
                 else -> colors.offline
             }
             Text(
-                text = "SERVER: ${if (state.connection is ConnectionState.Connected) "ONLINE" else "OFFLINE"}",
+                text = "NET ONLINE: ${if (state.connection is ConnectionState.Connected) "ONLINE" else "OFFLINE"}",
                 color = statusColor,
                 fontSize = 14.sp,
                 fontFamily = theme.typography.fontFamily
@@ -115,14 +116,14 @@ fun ContactsScreen(
             horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Text(
-                "[+] ADD_NODE", 
+                "[+] ADD",
                 color = colors.primary, 
                 fontSize = 16.sp,
                 fontFamily = theme.typography.fontFamily,
                 modifier = Modifier.clickable { onAddContact() }
             )
             Text(
-                "[*] CONFIG", 
+                "[*] CONF",
                 color = colors.subtle, 
                 fontSize = 18.sp,
                 fontFamily = theme.typography.fontFamily,
