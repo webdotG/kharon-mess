@@ -40,13 +40,15 @@ class ContactsViewModel @Inject constructor(
         viewModelScope.launch {
             contactDao.getAllFlow()
                 .map { list ->
-                    list.map {
+                    list.map { entity ->
                         Contact(
-                            pubKey        = it.pubKey,
-                            name          = it.name,
+                            pubKey        = entity.pubKey,
+                            name          = entity.name,
                             receptionMode = runCatching {
-                                ReceptionMode.valueOf(it.receptionMode)
-                            }.getOrDefault(ReceptionMode.LIVE)
+                                ReceptionMode.valueOf(entity.receptionMode)
+                            }.getOrDefault(ReceptionMode.LIVE),
+                            // сохраняем unreadCount из текущего state
+                            unreadCount   = socket.getUnreadCount(entity.pubKey)
                         )
                     }
                 }
