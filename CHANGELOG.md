@@ -1,28 +1,89 @@
-# Changelog
+# Kharon Messenger — Changelog
 
-All notable changes to this project will be documented in this file.
-Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+---
 
-## [1.0.0] - 2026-03-28
+## v2.0.0 — Reception Hours Edition (04.04.2026)
 
-### Added
-- E2E encryption: X25519 key exchange + XSalsa20-Poly1305
-- Node.js WSS relay server with Docker + Nginx
-- Android client (Kotlin + Jetpack Compose, min SDK 31)
-- Certificate pinning in OkHttp
-- Token bucket rate limiting (server + client)
-- 4 UI themes: Default, Terminal Dark, Terminal Light, Princess
-- Font size selector (Small / Medium / Large)
-- Contact management via public key exchange or QR code
-- SQLCipher encrypted local database
-- Android Keystore for key storage
-- FLAG_SECURE (no screenshots, hidden in task switcher)
-- Root detection warning
-- Replay attack protection (message ID deduplication)
-- F-Droid repository at https://webdotg.github.io/kharon-fdroid/repo
-- Self-hosted deployment via Docker Compose
+### Концепция
+Клиент больше не обязан висеть в сети 24/7.  
+Зашёл → Забрал → Ушёл. Шифрование прежнее. Следов нет.
 
-### Security
-- Messages stored in RAM only, TTL 2 minutes
-- Server never sees plaintext
-- No accounts, no phone numbers, no persistent history
+### Новое
+
+**Reception Mode — режимы приёма**
+- LIVE — постоянное соединение (как раньше)
+- PULSE_5/15/30/60/240/360/720/1440 — окно связи раз в N минут
+- SILENT — не принимает сообщения
+- Режим выбирается в Settings и сохраняется между сессиями
+- Режим собеседника виден в заголовке чата и списке контактов
+
+**PULSE цикл на AlarmManager**
+- Android будит сервис точно по расписанию
+- Android 12+: запрашивает SCHEDULE_EXACT_ALARM
+- Android 10-11: работает без разрешений
+- Fallback на неточный будильник если разрешение не дано
+
+**Динамический TTL на сервере**
+- Сервер запоминает режим каждого получателя
+- TTL сообщения = 2 мин + интервал PULSE получателя
+- PULSE_5 → TTL 7 минут, PULSE_1440 → TTL 26 часов
+
+**Временное LIVE при открытии чата**
+- Открыл чат в PULSE → соединение поднимается автоматически
+- Закрыл чат → режим восстанавливается
+
+**Счётчик непрочитанных**
+- Цифра в списке контактов рядом с именем
+- Сбрасывается при открытии чата
+- Работает в обоих режимах — LIVE и PULSE
+
+**PULSE уведомления с вибрацией**
+- "Новых сообщений: N" — вибрация + звук
+- "Окно связи открылось — новых сообщений нет" — тихое
+
+**Автозапуск после перезагрузки**
+- BootReceiver запускает сервис при BOOT_COMPLETED
+
+**Темы оформления**
+- Princess ♡ — розово-фиолетовая, теперь дефолтная
+- Terminal Dark >_! — зелёный на чёрном
+- Terminal Light о_0 — тёмный на белом
+- Shadow ☠ — новая, чёрно-красно-белая
+
+**UX улучшения**
+- Кнопка назад ← в заголовке чата
+- Автоскролл к новым сообщениям (мгновенный)
+- Credits счётчик в заголовке чата
+
+### Исправлено
+- Режим собеседника обновляется в реальном времени
+- Буферизованные сообщения корректно показываются при открытии чата
+- Сброс счётчика непрочитанных при закрытии чата
+- Двойной вызов scheduleNextPulse устранён флагом pulseScheduled
+
+### Сервер
+- `hub.js`: lastKnownMode Map, динамический TTL, updateMode()
+- `hub.js`: parseModeMinutes() — парсит PULSE_N в минуты
+- `index.js`: hub.updateMode() при получении mode_update
+
+---
+
+## v1.1.0 (02.04.2026)
+
+- Базовый PULSE режим (первая попытка)
+- Исправлены статусы сообщений
+- Credits система
+
+---
+
+## v1.0.0 (01.04.2026)
+
+- E2E шифрование X25519 + XSalsa20-Poly1305
+- WebSocket с certificate pinning
+- Онлайн переписка LIVE режим
+- Статусы: SENDING / SENT / DELIVERED / READ / FAILED
+- Добавление контактов через QR или копипаст ключа
+- Room + SQLCipher для контактов
+- Android Keystore для ключей
+- FLAG_SECURE — нет скриншотов
+- ForegroundService для фонового соединения
