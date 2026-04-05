@@ -15,8 +15,8 @@ android {
         applicationId = "com.kharon.messenger"
         minSdk = 29
         targetSdk = 36
-	versionCode = 2
-	versionName = "1.1"
+        versionCode = 3
+        versionName = "2.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -26,6 +26,10 @@ android {
             val ksPass = (project.findProperty("KEYSTORE_PASS") as? String) ?: System.getenv("KEYSTORE_PASS")
             val kAlias = (project.findProperty("KEY_ALIAS") as? String) ?: System.getenv("KEY_ALIAS")
             val kPass = (project.findProperty("KEY_PASS") as? String) ?: System.getenv("KEY_PASS")
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = false
+            enableV4Signing = false
 
             storeFile = if (!ksPath.isNullOrEmpty()) file(ksPath) else null
             storePassword = ksPass
@@ -37,7 +41,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
-            isShrinkResources = true
+            isShrinkResources = false
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
